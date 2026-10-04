@@ -12,6 +12,15 @@ pub struct ControlsConfig {
     pub deadzone: f32,
     /// Cursor speed at full stick deflection, logical px per second.
     pub cursor_speed: f32,
+    /// Response curve exponent for the free cursor's aim vector, applied
+    /// before `cursor_speed` scales it (`speed = sign(x) * |x|^cursor_curve *
+    /// cursor_speed`, per axis). `1.0` is linear (every other device's
+    /// behavior, unchanged); raising it keeps full stick deflection at the
+    /// same top speed while softening small deflections, for finer aim
+    /// landing on a specific link or field. The D-pad's digital ±1 is a fixed
+    /// point of any exponent, so this never changes D-pad-only movement;
+    /// scrolling and the on-screen keyboard's stick input are unaffected too.
+    pub cursor_curve: f32,
     /// Scroll speed at full stick deflection, device px per second.
     pub scroll_speed: f32,
     /// Trigger pull (normalized) above which L2/R2 count as pressed.
@@ -56,6 +65,7 @@ impl Default for ControlsConfig {
         Self {
             deadzone: 0.25,
             cursor_speed: 600.0,
+            cursor_curve: 1.0,
             scroll_speed: 1600.0,
             trigger_threshold: 0.5,
             osk_nav_threshold: 0.5,

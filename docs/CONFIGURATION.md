@@ -68,6 +68,7 @@ cursor_linger_ms = 1500    # how long the cursor stays visible after moving
 [controls]
 deadzone = 0.25            # stick deflection treated as centered
 cursor_speed = 600.0       # cursor speed at full deflection
+cursor_curve = 1.0         # 1.0 = linear; raise for finer aim near center, same top speed
 scroll_speed = 1600.0      # scroll speed at full deflection
 trigger_threshold = 0.5    # pull at which L2/R2 count as pressed
 osk_nav_threshold = 0.5    # stick deflection that moves the on-screen keyboard

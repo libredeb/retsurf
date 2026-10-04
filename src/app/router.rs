@@ -469,8 +469,9 @@ impl App {
         // Scalar copies: the config holds non-Copy data (the bindings map), so
         // it can't be borrowed across the `&mut self` calls below.
         let cfg = &self.config.controls;
-        let (cursor_speed, scroll_speed, nav_threshold, hint_badges, edge_scroll) = (
+        let (cursor_speed, cursor_curve, scroll_speed, nav_threshold, hint_badges, edge_scroll) = (
             cfg.cursor_speed,
+            cfg.cursor_curve,
             cfg.scroll_speed,
             cfg.osk_nav_threshold,
             cfg.hint_badges,
@@ -538,8 +539,8 @@ impl App {
 
         if aim != (0.0, 0.0) {
             let clipped = self.ui.move_cursor(
-                aim.0 * cursor_speed * dt,
-                aim.1 * cursor_speed * dt,
+                curved(aim.0, cursor_curve) * cursor_speed * dt,
+                curved(aim.1, cursor_curve) * cursor_speed * dt,
                 &self.window,
             );
             if edge_scroll && !self.browser.in_game_mode() {
@@ -614,6 +615,15 @@ fn dpad_sym(dx: i32, dy: i32) -> Option<Sym> {
         (1, 0) => Sym::Right,
         _ => return None,
     })
+}
+
+/// Eases one axis of stick deflection by `[controls] cursor_curve` before it is
+/// scaled to a cursor speed: `1.0` is a no-op (every fixed point of `x.powf(1)`
+/// is `x` itself), above it softens a small deflection more than a large one
+/// while leaving -1/0/1 exactly where they were — so the D-pad's digital aim,
+/// which is always one of those three, is never touched by this curve.
+fn curved(x: f32, exponent: f32) -> f32 {
+    x.signum() * x.abs().powf(exponent)
 }
 
 /// Reduce a stick vector to a single discrete grid step along its dominant axis,

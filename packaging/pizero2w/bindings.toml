@@ -1,0 +1,18 @@
+# Pi Zero 2 W / GamerCard override: the stock `[gamepad]` defaults
+# (src/event/bindings.rs) bind zoom_in/zoom_out/zoom_reset to l2, r2 and
+# l2+r2 — but this board's Arduino Leonardo has no analog triggers (see
+# packaging/pizero2w/README.md's Input section), so those three can never
+# fire here. Every other default gesture (a/b/x/y/l1/r1/start/select and
+# their holds/chords) is left out on purpose: retsurf's own
+# `merge_missing_defaults` (src/event/bindings.rs) restores any action this
+# file doesn't mention, so listing only the broken three is enough and keeps
+# this file from drifting out of sync with upstream's own defaults.
+#
+# Same idiom the stock bindings already use for l2/r2: a lone button steps
+# zoom, a two-shoulder squeeze resets it (both orders bound, like the
+# original l2+r2 / r2+l2).
+[gamepad]
+"select+a" = "zoom_in"
+"select+b" = "zoom_out"
+"l1+r1" = "zoom_reset"
+"r1+l1" = "zoom_reset"

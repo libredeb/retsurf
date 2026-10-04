@@ -72,6 +72,16 @@ pub const CURSOR_SPEED: FloatBounds = FloatBounds {
     max: 3000.0,
     default: 600.0,
 };
+/// Exponent applied to stick deflection before `cursor_speed` scales it. `1.0`
+/// is linear (unchanged behavior); above it, small deflections move the cursor
+/// proportionally slower than large ones, for finer aim without losing top
+/// speed at full deflection (`1.0^k` and `(-1.0)^k` are fixed points). Below
+/// `1.0` would do the opposite (twitchier near center), which nothing asks for.
+pub const CURSOR_CURVE: FloatBounds = FloatBounds {
+    min: 1.0,
+    max: 3.0,
+    default: 1.0,
+};
 pub const SCROLL_SPEED: FloatBounds = FloatBounds {
     min: 100.0,
     max: 5000.0,

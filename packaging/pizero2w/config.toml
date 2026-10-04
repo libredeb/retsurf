@@ -17,16 +17,29 @@ height = 720
 # no compositor to hand it a surface.
 use_gles = false
 software_render = true
-# No window manager on a KMS/DRM-direct kiosk boot, so nothing could drag this
-# away from 720x720 regardless — set anyway so an X11/Wayland session used for
-# on-device debugging can't either, and so the layout viewport the pages see
-# (window.innerWidth/innerHeight) never becomes a value nobody chose.
+# This board runs labwc (a real Wayland compositor), not a bare KMS/DRM kiosk
+# boot — a window manager capable of resizing this window genuinely exists
+# here. `lock_size` is what keeps the layout viewport the pages see
+# (window.innerWidth/innerHeight) pinned to 720x720 regardless, whether the
+# custom launcher, a labwc keybind, or an on-device debugging session tries
+# to drag it elsewhere. See README.md's compositing section for the detail.
 lock_size = true
 
 [browser]
 # A second tab is a second engine's worth of memory on a device with none to
 # spare: Servo keeps a full script/layout/JS-heap stack per open tab.
 max_tabs = 1
+
+[controls]
+# The nav disc aims the cursor linearly by default (speed = deflection *
+# cursor_speed, same on every device) — fine for crossing the screen, coarse
+# for stopping exactly on a small link, especially on a short-throw disc
+# instead of a long-throw thumbstick. Quadratic easing (2.0) keeps full
+# deflection at the same top speed while making a small push move the cursor
+# much more slowly, for the same reason a mouse's own pointer acceleration
+# exists. Tune live in Settings > Controls > "Cursor precision" if 2.0 isn't
+# the right feel on the actual nav disc.
+cursor_curve = 2.0
 
 [performance]
 # `auto` already resolves 512 MB into this tier (src/browser/memory.rs,
@@ -51,6 +64,14 @@ worker_pool_max = 0
 # `embedded` already spends on no in-memory cache at all
 # (network_http_cache_disabled, set by the tier itself).
 http_disk_cache_mb = 0
+# Pinned on purpose, not left at the engine's own default (also 30): the
+# HyperPixel panel's spec sheet advertises 60fps, which reads as "this should
+# be 60" — but every frame here is a full-panel CPU recomposite
+# (`[display] software_render`, no GPU compositor pass to amortize it), so
+# doubling to 60 doubles that cost for a kiosk-style browser UI, not a twitch
+# game, on a 1600 mAh battery. Raise only after measuring battery life and
+# frame cost on an actual unit, not from the spec sheet alone.
+max_fps = 30
 
 [data_saving]
 # Servo decodes every <img> up front — no lazy loading — and keeps the decoded

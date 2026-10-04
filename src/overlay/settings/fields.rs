@@ -391,6 +391,7 @@ pub(super) static FIELDS: &[Field] = &[
 
     f(S::Controls, "Cursor & scroll", "Cursor mode",        choice!(controls.cursor_mode: CursorMode), true),
     f(S::Controls, "Cursor & scroll", "Cursor speed",       float!(controls.cursor_speed as f32, bounds::CURSOR_SPEED, 50.0, 0), false),
+    f(S::Controls, "Cursor & scroll", "Cursor precision",   float!(controls.cursor_curve as f32, bounds::CURSOR_CURVE, 0.1, 1), false),
     f(S::Controls, "Cursor & scroll", "Scroll speed",       float!(controls.scroll_speed as f32, bounds::SCROLL_SPEED, 100.0, 0), false),
     f(S::Controls, "Cursor & scroll", "Edge scrolling",     flag!(controls.edge_scroll), false),
     f(S::Controls, "Cursor & scroll", "Hint badges",        flag!(controls.hint_badges), false),
