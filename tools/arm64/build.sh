@@ -151,7 +151,12 @@ docker run --rm -i --network host \
       # RETSURF_ARM64_OPT=3 puts the old level back, which is how the two compare.
       export CARGO_PROFILE_RELEASE_OPT_LEVEL="${RETSURF_ARM64_OPT:-s}"
 
-      cargo build --release --target "$TARGET"
+      # --no-default-features --features webgl: the root Cargo.toml's default
+      # flipped to ["software"] for the Pi Zero 2 W fork (CPU-only, no GPU
+      # worth spending RAM on there); these binaries target Mali/PowerVR
+      # handhelds that do have one, so pin webgl explicitly to keep it, same
+      # as .github/workflows/build-linux-arm.yml.
+      cargo build --release --no-default-features --features webgl --target "$TARGET"
       out="/target/$TARGET/release/retsurf"
       aarch64-linux-gnu-strip -o "/repo/dist/arm64/retsurf.$cpu" "$out"
 

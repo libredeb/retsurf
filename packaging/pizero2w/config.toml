@@ -1,0 +1,65 @@
+# Default retsurf.toml for the Raspberry Pi Zero 2 W target (4x Cortex-A53,
+# 512 MB total RAM shared with the VideoCore GPU's carve-out) driving a
+# Pimoroni HyperPixel 4.0 Square (720x720, no touch, no window manager).
+#
+# Stages 1 (resource trim) and 2 (720x720 square compositing) of the
+# pizero2w refactor — see packaging/pizero2w/README.md. Stage 3 (the forced
+# size-optimized build profile) lives in Cargo.toml, not here.
+
+[display]
+# The panel's native resolution, exactly — see README.md for why the chrome
+# needs no device-specific scaling override to look right at this size.
+width = 720
+height = 720
+# No GPU path is compiled into this fork by default any more (Cargo.toml's
+# `default = ["software"]"); this just makes the device's own choice explicit
+# so a `webgl`-featured debug build doesn't silently try EGL on a board with
+# no compositor to hand it a surface.
+use_gles = false
+software_render = true
+# No window manager on a KMS/DRM-direct kiosk boot, so nothing could drag this
+# away from 720x720 regardless — set anyway so an X11/Wayland session used for
+# on-device debugging can't either, and so the layout viewport the pages see
+# (window.innerWidth/innerHeight) never becomes a value nobody chose.
+lock_size = true
+
+[browser]
+# A second tab is a second engine's worth of memory on a device with none to
+# spare: Servo keeps a full script/layout/JS-heap stack per open tab.
+max_tabs = 1
+
+[performance]
+# `auto` already resolves 512 MB into this tier (src/browser/memory.rs,
+# 257-768 MB -> `embedded`), but pinned explicitly so an SoC reporting a
+# slightly different MemTotal after the GPU's memory split can't silently
+# land on a neighboring tier. `embedded` alone already gives: 1 layout/worker
+# thread, a 64 MB JS heap with the most eager GC thresholds short of `micro`,
+# no in-memory or on-disk HTTP cache, grayscale-only text AA, and every
+# optional DOM subsystem (WebXR, Bluetooth, service/shared workers, worklets,
+# accessibility) off.
+memory_profile = "embedded"
+# Needs the scaling_governor sysfs files writable (root, or a udev rule);
+# silently skipped with a log line otherwise. Measured -16% page load time on
+# comparable in-order Cortex-A cores (see src/config/performance.rs).
+cpu_boost_on_load = true
+# 0 = keep the `embedded` tier's own counts (1 everywhere). RAM, not the 4
+# A53 cores, is what 512 MB binds first; raise to 2 only if your own image's
+# profiling shows headroom to spend a second core on layout/WebRender.
+layout_threads = 0
+worker_pool_max = 0
+# No on-disk HTTP cache: writes would land on the SD/eMMC card for a budget
+# `embedded` already spends on no in-memory cache at all
+# (network_http_cache_disabled, set by the tier itself).
+http_disk_cache_mb = 0
+
+[data_saving]
+# Servo decodes every <img> up front — no lazy loading — and keeps the decoded
+# bitmap resident for as long as the DOM node lives; there is no byte-sized
+# image-cache preference to set directly (see the module docs in
+# src/browser/memory.rs). Count is the real lever available: at the ~0.75
+# MB/image resident cost measured on the Miyoo Mini port
+# (packaging/miyoo/shared/config.toml, 87 MB -> 9 MB at a cap of 12), 40
+# images keeps a single page's own decoded-image memory under ~30 MB, leaving
+# the 64 MB JS heap and layout/WebRender their own room underneath the
+# `embedded` tier's ceiling.
+max_images_per_page = 40

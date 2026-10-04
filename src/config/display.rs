@@ -19,6 +19,18 @@ pub struct DisplayConfig {
     /// Paint the screen's last row black. Some panels show that row again as the
     /// first one, so a light page bleeds a band above the toolbar (muOS/A133).
     pub dark_last_row: bool,
+    /// Build the window without SDL's `resizable` flag, so a window manager
+    /// present on the box (X11/Wayland during development, say) cannot drag it
+    /// away from `width`x`height`. Off by default: on every other target the
+    /// flag is already inert (no mouse/WM to act on it — a touch handheld, a
+    /// panel driver that owns the screen outright, Android's own fixed
+    /// surface) and the dynamic-resize path (`src/event/window.rs`'s
+    /// `WindowEvent::Resized` handling) stays in place for the targets that do
+    /// need it (desktop, Android rotation). A panel wired to one fixed
+    /// resolution with no compositor at all (a dedicated kiosk board) turns
+    /// this on to make that guarantee a build-configured fact rather than an
+    /// absence of hardware able to break it.
+    pub lock_size: bool,
 }
 
 impl Default for DisplayConfig {
@@ -29,6 +41,7 @@ impl Default for DisplayConfig {
             use_gles: true,
             software_render: false,
             dark_last_row: false,
+            lock_size: false,
         }
     }
 }

@@ -52,12 +52,14 @@ jobs:
       # SDL2 is built from source and linked statically (no system SDL2 on the
       # runner, and users shouldn't need one either). SpiderMonkey comes as
       # mozjs' prebuilt archive for aarch64-apple-darwin (jit+intl on, so its
-      # build script downloads instead of compiling). Default features stay on:
-      # desktop GL has working surfman, so webgl keeps its connection probe.
-      # CMAKE_POLICY_VERSION_MINIMUM: the SDL2 bundled in sdl2-sys declares
-      # cmake_minimum_required < 3.5, which CMake 4.x refuses outright.
+      # build script downloads instead of compiling). `--no-default-features
+      # --features webgl,...`: the PIZERO2W FORK's Cargo.toml default flipped
+      # to `["software"]` (CPU-only), but this is still a desktop GL target
+      # with working surfman — pin webgl explicitly so it keeps its connection
+      # probe. CMAKE_POLICY_VERSION_MINIMUM: the SDL2 bundled in sdl2-sys
+      # declares cmake_minimum_required < 3.5, which CMake 4.x refuses outright.
       - name: Build
-        run: cargo build --release --features sdl2-bundled,sdl2-static-link
+        run: cargo build --release --no-default-features --features webgl,sdl2-bundled,sdl2-static-link
         env:
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
           # CI performance build (see Cargo.toml [profile.release] note); kept out

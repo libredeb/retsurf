@@ -309,8 +309,14 @@ fn build_window(
     if gl {
         builder.opengl();
     }
+    // See `DisplayConfig::lock_size`: everywhere else the flag is harmless
+    // (nothing drags a handheld's or Android's window), so it stays on unless
+    // a board's config asks to make the fixed size a guarantee rather than an
+    // accident of missing hardware.
+    if !config.lock_size {
+        builder.resizable();
+    }
     builder
-        .resizable()
         .build()
         .map_err(|e| format!("failed to build window: {e}"))
 }

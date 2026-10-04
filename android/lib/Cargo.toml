@@ -13,4 +13,10 @@ name = "retsurf" # SDL's Java shell dlopens `libretsurf.so` by this name
 crate-type = ["cdylib"]
 
 [dependencies]
-retsurf = { path = "../.." }
+# `default-features = false, features = ["webgl"]`: the root Cargo.toml's
+# default flipped to `["software"]` for the Pi Zero 2 W fork (CPU-only by
+# default — that board has no GPU path worth spending RAM on). Android phones/
+# tablets have a real GPU (Mali/Adreno/PowerVR) and no CPU-fallback build of
+# this app exists for them, so the dependency pins webgl back explicitly
+# rather than silently inheriting whatever the root manifest defaults to.
+retsurf = { path = "../..", default-features = false, features = ["webgl"] }

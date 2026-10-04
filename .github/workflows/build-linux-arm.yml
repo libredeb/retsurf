@@ -118,9 +118,14 @@ jobs:
           CARGO_PROFILE_RELEASE_PANIC: "abort"
         run: |
           set -eux
-          # Default features, webgl included: the composite path takes SDL's own
-          # EGL display, so an EGL 1.4 Mali blob no longer rules it out.
-          cargo build --release
+          # `--no-default-features --features webgl`: the PIZERO2W FORK's
+          # Cargo.toml default flipped to `["software"]` (CPU-only, for a
+          # board with no GPU worth spending RAM on). These per-core binaries
+          # target Mali/PowerVR handhelds (RK3566, H700, A527, A133 Plus,
+          # RK3326) that very much have a GPU — pin webgl explicitly so they
+          # keep it. The composite path takes SDL's own EGL display, so an
+          # EGL 1.4 Mali blob no longer rules it out.
+          cargo build --release --no-default-features --features webgl
           df -h /
 
       # Above the floor the device's loader refuses the binary, so fail here
@@ -277,9 +282,11 @@ jobs:
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
         run: |
           set -eux
+          # `--no-default-features --features webgl`: see the per-core job
+          # above — same fork-wide default flip, same reason to pin it back.
           # panic stays `unwind` here: a Servo worker's panic should not take a
           # desktop-style install down with it.
-          cargo build --release
+          cargo build --release --no-default-features --features webgl
           df -h /
 
       - name: Check the glibc floor

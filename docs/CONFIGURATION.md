@@ -103,6 +103,7 @@ height = 480
 use_gles = true            # OpenGL ES (required on handheld GPUs)
 software_render = false    # render without the GPU (see below)
 dark_last_row = false      # black last row, for panels that repeat it at the top
+lock_size = false          # skip SDL's resizable flag; for a fixed-panel board with no WM
 
 [history]
 enabled = true             # false stops recording; existing entries stay

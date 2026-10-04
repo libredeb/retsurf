@@ -1,0 +1,69 @@
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<!--
+  Raspberry Pi OS (and most other RPi images) ships fontconfig and a real
+  /usr/share/fonts already, so this template bundles no font of its own: no
+  <dir> here points at anything retsurf ships, only at system locations. It
+  exists purely so the generic CSS families (sans-serif, serif, monospace)
+  and the handful of web-common names pages hardcode (Arial, Helvetica,
+  Segoe UI, ...) resolve to *something* on an image trimmed down to one
+  font package, instead of falling through to tofu boxes.
+
+  launch.sh installs this only when the image's own fontconfig cannot resolve
+  a sans-serif font at all (see its comment) — an image that already has a
+  working fontconfig keeps its own conf.d aliases instead of these being
+  pasted over them. @FCCACHE@ is substituted with a writable cache directory.
+-->
+<fontconfig>
+  <!-- System directories only: nothing under here is retsurf's to ship. -->
+  <dir>/usr/share/fonts</dir>
+  <dir>/usr/local/share/fonts</dir>
+  <dir>/usr/share/fonts/truetype/dejavu</dir>
+  <dir>/usr/share/fonts/truetype/noto</dir>
+  <cachedir>@FCCACHE@</cachedir>
+
+  <alias><family>sans-serif</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>serif</family><prefer><family>DejaVu Serif</family></prefer></alias>
+  <alias><family>monospace</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+  <alias><family>cursive</family><prefer><family>DejaVu Serif</family></prefer></alias>
+  <alias><family>fantasy</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>system-ui</family><prefer><family>DejaVu Sans</family></prefer></alias>
+
+  <!-- The families the web names, mapped onto what a Pi image actually has. -->
+  <alias><family>Arial</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>Helvetica</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>Helvetica Neue</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>Verdana</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>Tahoma</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>Segoe UI</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>Roboto</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>Liberation Sans</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>Times</family><prefer><family>DejaVu Serif</family></prefer></alias>
+  <alias><family>Times New Roman</family><prefer><family>DejaVu Serif</family></prefer></alias>
+  <alias><family>Georgia</family><prefer><family>DejaVu Serif</family></prefer></alias>
+  <alias><family>Garamond</family><prefer><family>DejaVu Serif</family></prefer></alias>
+  <alias><family>Liberation Serif</family><prefer><family>DejaVu Serif</family></prefer></alias>
+  <alias><family>Courier</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+  <alias><family>Courier New</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+  <alias><family>Consolas</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+  <alias><family>Menlo</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+  <alias><family>Monaco</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+
+  <!-- Anything still unmatched: a page naming a font nobody has should get
+       text, not nothing. -->
+  <match target="pattern">
+    <edit name="family" mode="append_last">
+      <string>DejaVu Sans</string>
+    </edit>
+  </match>
+
+  <!-- HyperPixel's subpixel order isn't something to guess at, and
+       WebRender's subpixel AA path costs more glyph-cache memory than it
+       buys at this size on a Cortex-A53. -->
+  <match target="font">
+    <edit name="antialias" mode="assign"><bool>true</bool></edit>
+    <edit name="rgba" mode="assign"><const>none</const></edit>
+    <edit name="hinting" mode="assign"><bool>true</bool></edit>
+    <edit name="hintstyle" mode="assign"><const>hintslight</const></edit>
+  </match>
+</fontconfig>

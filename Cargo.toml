@@ -15,22 +15,58 @@ name = "retsurf"
 crate-type = ["lib"]
 
 [features]
-default = ["webgl"]
-# WebGL through a surfman connection over SDL's own EGL display. Off, it leaves
-# the engine's WebGL thread out — what the EGL-less software build wants. WebGPU
-# is a feature of its own upstream and is not enabled here.
+# PIZERO2W FORK: default flipped from upstream's ["webgl"] to ["software"].
+# This fork targets exactly one board (Raspberry Pi Zero 2 W + HyperPixel 4.0
+# Square) with no GPU-accelerated EGL/GLES path worth carrying by default — the
+# VideoCore IV's shared-memory GL path costs unified RAM this device has none of
+# spare, on a panel too small for the difference to be visible. A plain
+# `cargo build --release` now never pulls in `servo/webgl`, `gleam`, or the
+# EGL/surfman GL context at all on the Servo side; see [profile.release] below
+# for why `mod gl` itself (src/platform/window/gl.rs) still compiles — that is
+# a stage-2/3 item, not this one.
+default = ["software"]
+# WebGL through a surfman connection over SDL's own EGL display. Off by default
+# on this fork (see above); still available with `--features webgl` for anyone
+# building this tree for GPU-bearing hardware. WebGPU is a feature of its own
+# upstream and is not enabled here.
 webgl = ["servo/webgl"]
-# Software rendering end to end, for devices with no GPU at all (Miyoo Mini):
-# swgl rasterizes the page, SDL's own renderer paints the chrome. Opt-in because
-# swgl compiles every WebRender shader as C++, which no GPU-bearing target needs.
+# Software rendering end to end, for devices with no GPU at all (Miyoo Mini) or,
+# on this fork, no GPU path we want to spend RAM on (Pi Zero 2 W): swgl
+# rasterizes the page, SDL's own renderer paints the chrome. Now the default
+# (see above) rather than opt-in, even though swgl compiles every WebRender
+# shader as C++ — the one GPU-bearing target upstream carried this feature for
+# is not this fork's target.
 software = ["dep:swgl", "egui-sdl2/canvas-backend"]
 sdl2-bundled = ["sdl2/bundled"]
 sdl2-static-link = ["sdl2/static-link"]
 
-# Fat LTO and codegen-units = 1 are CI-only (CARGO_PROFILE_RELEASE_* in the
-# workflows), so a local release build stays fast. `panic` is set per target
-# there too: nothing in our code catches an unwind any more.
+# PIZERO2W FORK: upstream kept fat LTO / codegen-units=1 / panic=abort CI-only
+# (CARGO_PROFILE_RELEASE_* env vars in the workflows) so a contributor's local
+# `cargo build --release` stayed fast across six platforms. This fork drops
+# that tradeoff on purpose: it has exactly one target, so "fast local release
+# build" is not a thing worth keeping, and every `cargo build --release` here
+# should produce the same binary CI would. `panic = "abort"` matches what
+# upstream already sets for every *embedded* per-device build (Miyoo's armhf,
+# the arm64 per-core handheld binaries) — it only stays `unwind` upstream on
+# the generic desktop-style Linux install, "so a Servo worker's panic does not
+# take a desktop install down with it" (build-linux-arm.yml). A single-purpose
+# kiosk board gets no benefit from that resilience (there is no session to
+# save a crashing tab out of) and every byte of unwind-table is one this
+# device doesn't have spare; a panic still writes `RETSURF_PANIC_FILE` before
+# the process exits (src/lib.rs), so field failures stay diagnosable.
 [profile.release]
+# Aggressive size over speed, per spec: `z` typically costs a few percent more
+# CPU per frame than `s` for a bit more size shaved. Upstream's own armhf CI
+# build (the Miyoo Mini, the weakest CPU in this tree) measured that tradeoff
+# and chose `s` (see .github/workflows/build-linux-armhf.yml) — the Pi Zero
+# 2 W's four A53s have more headroom than the Mini's dual in-order A7s, which
+# is the only reason `z` is a reasonable ask here rather than a frame-time
+# regression. If `[debug] frame_timing` shows the software compositor missing
+# its budget, drop this back to `"s"` first before touching anything else.
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
 # `strip` is for local and Android builds, which have no strip step of their own and
 # would otherwise ship symbols. The other two are release defaults, pinned so every
 # build matches.
@@ -38,8 +74,11 @@ strip = true
 debug-assertions = false
 overflow-checks = false
 
-# The rasterizers stay at -O3 when the rest of the graph is built for size (see
-# tools/armhf/build.sh): they are the frame, and scalar swgl is not an option.
+# The rasterizers stay at -O3 even under a `z`-everywhere release profile: they
+# are the frame, and scalar swgl — the only path this fork's `software` default
+# rasterizes through — is not something to make slower in exchange for a
+# smaller .text. Unchanged from upstream (see tools/armhf/build.sh), which
+# needed the same exception for the same reason on a weaker CPU.
 [profile.release.package.swgl]
 opt-level = 3
 [profile.release.package.webrender]

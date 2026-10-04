@@ -21,7 +21,7 @@ cargo run
 
 ```sh
 brew install cmake pkg-config
-cargo build --release --features sdl2-bundled,sdl2-static-link
+cargo build --release --no-default-features --features webgl,sdl2-bundled,sdl2-static-link
 ```
 
 ## Windows
@@ -29,28 +29,40 @@ cargo build --release --features sdl2-bundled,sdl2-static-link
 SDL2 is built from source and linked statically, so no SDL2 DLL is needed.
 
 ```sh
-cargo build --release --features sdl2-bundled,sdl2-static-link
+cargo build --release --no-default-features --features webgl,sdl2-bundled,sdl2-static-link
 ```
 
 If CMake 4.x rejects the bundled SDL2, set `CMAKE_POLICY_VERSION_MINIMUM=3.5`.
 
 ## Cargo features
 
+> **pizero2w fork:** the default feature set is `["software"]`, not upstream's
+> `["webgl"]` — this tree targets a Raspberry Pi Zero 2 W with no GPU path
+> worth spending RAM on. A plain `cargo build --release`/`cargo run` is now a
+> CPU-only build; pass `--no-default-features --features webgl` for GPU
+> rendering on hardware that has one (every command on this page that still
+> wants GPU accel — macOS, Windows, a desktop Linux GL build — does so
+> explicitly, above and in CI).
+
 | Feature | Default | What it does |
 | --- | --- | --- |
-| `webgl` | on | WebGL over SDL's EGL display |
-| `software` | off | CPU rendering for devices without a GPU |
+| `software` | **on** | CPU rendering: swgl rasterizes the page, SDL's own renderer paints the chrome |
+| `webgl` | off | WebGL over SDL's EGL display; also required for any GPU-accelerated rendering at all |
 | `sdl2-bundled` | off | Build SDL2 from source |
 | `sdl2-static-link` | off | Link SDL2 statically |
 
-A software build has no GL, so it turns the defaults off:
+To get the pre-fork behavior back (GPU rendering, no swgl/CPU fallback compiled in):
 
 ```sh
-cargo build --release --no-default-features --features software
+cargo build --release --no-default-features --features webgl
 ```
 
-CI release builds add fat LTO and `codegen-units = 1`; `Cargo.toml` leaves them out to
-keep local builds quick.
+CI release builds add fat LTO, `codegen-units = 1`, `opt-level = "z"` and
+`panic = "abort"` — on this fork these are pinned directly in `Cargo.toml`
+(not CI-only), so a local `cargo build --release` now matches what ships. This
+trades local iteration speed for every build being the real thing; see the
+comments in `Cargo.toml`'s `[profile.release]` if that tradeoff needs
+revisiting for day-to-day development.
 
 ## Android
 

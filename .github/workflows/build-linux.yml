@@ -52,12 +52,14 @@ jobs:
 
       # System SDL2, dynamically linked — desktop distros all package it, unlike
       # the windows/macos targets where a bundled static build is the only sane
-      # option. Default features stay on: desktop GL has working surfman, so
-      # webgl keeps its connection probe.
+      # option. `--no-default-features --features webgl`: the PIZERO2W FORK's
+      # Cargo.toml default flipped to `["software"]` (CPU-only), but this is
+      # still a desktop GL target with working surfman — pin webgl explicitly
+      # so this release keeps its GPU path and its WebGL connection probe.
       - name: Build
         run: |
           set -eux
-          cargo build --release
+          cargo build --release --no-default-features --features webgl
           df -h /
 
       - name: Stage binary

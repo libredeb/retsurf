@@ -103,6 +103,8 @@ mod tests {
     const HANDHELD: egui::Vec2 = BASE_SIZE;
     const FLIP: egui::Vec2 = egui::vec2(752.0, 560.0);
     const DESKTOP: egui::Vec2 = egui::vec2(1280.0, 720.0);
+    /// The Pi Zero 2 W target: a Pimoroni HyperPixel 4.0 Square, 720x720.
+    const SQUARE: egui::Vec2 = egui::vec2(720.0, 720.0);
     /// The same handheld held the other way up.
     const TURNED: egui::Vec2 = egui::vec2(BASE_SIZE.y, BASE_SIZE.x);
 
@@ -132,10 +134,23 @@ mod tests {
         assert_scale(wanted_scale(FLIP, None, 1.0), 1.0);
     }
 
+    /// 720x720 is 12.5% past the design on its short edge (the one `fit` binds
+    /// to for a square panel, since both edges of a square are the short edge)
+    /// — inside `WHOLE_ZOOM_REACH`, so the chrome stays a crisp 1x and every
+    /// one of the square's 80 extra points on each axis goes to the page, not
+    /// to larger chrome. At this panel's ~254 ppi (4" diagonal, 720x720) that
+    /// is a denser screen than the Flip's own ~268 ppi, where the same 1x chrome
+    /// is already the shipped, legible default — so this needs no device-
+    /// specific override, only the ordinary fit every other panel gets.
+    #[test]
+    fn a_square_panel_a_little_past_the_design_also_keeps_a_whole_zoom() {
+        assert_scale(wanted_scale(SQUARE, None, 1.0), 1.0);
+    }
+
     #[test]
     fn a_quarter_turn_hands_back_the_same_screen_and_the_same_sized_chrome() {
         assert_scale(wanted_scale(TURNED, None, 1.0), 1.0);
-        for panel in [HANDHELD, FLIP, DESKTOP] {
+        for panel in [HANDHELD, FLIP, DESKTOP, SQUARE] {
             let turned = egui::vec2(panel.y, panel.x);
             for user in user_scales() {
                 assert_eq!(
@@ -182,7 +197,7 @@ mod tests {
 
     #[test]
     fn a_scale_settles_rather_than_swapping_between_two_steps_every_frame() {
-        for panel in [HANDHELD, FLIP, TURNED, DESKTOP] {
+        for panel in [HANDHELD, FLIP, TURNED, DESKTOP, SQUARE] {
             for user in user_scales() {
                 let mut zoom = 1.0;
                 for _ in 0..8 {

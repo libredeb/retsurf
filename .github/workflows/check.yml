@@ -33,16 +33,25 @@ jobs:
 
       # One profile for all three steps: a profile switch would compile Servo a
       # second time. Release without the LTO knobs the Nightly build sets.
+      #
+      # `--no-default-features --features webgl`: the PIZERO2W FORK's
+      # Cargo.toml default flipped to `["software"]` (CPU-only, for a board
+      # with no GPU worth spending RAM on), but this workflow checks the
+      # shared code every other platform in this repo still ships on GPU
+      # hardware — and the Pages step below specifically probes the WebGL
+      # path. Pin the pre-flip default explicitly rather than letting Check
+      # silently start validating a different configuration than Linux/ARM/
+      # Android/macOS/Windows build.
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --no-default-features --features webgl
 
       - name: Test
-        run: cargo test --release
+        run: cargo test --release --no-default-features --features webgl
 
       # Only workspace crates go through clippy-driver (RUSTC_WORKSPACE_WRAPPER),
       # so the dependencies stay as the build left them.
       - name: Clippy
-        run: cargo clippy --release --all-targets -- -D warnings
+        run: cargo clippy --release --all-targets --no-default-features --features webgl -- -D warnings
 
       # The only step that runs a browser: layout, media, WebGL, input and the
       # download triggers, through the pages' own beacons. Software GL: no GPU here.
