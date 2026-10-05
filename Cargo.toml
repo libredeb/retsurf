@@ -4,52 +4,38 @@ version = "0.9.0"
 edition = "2021"
 license = "GPL-3.0"
 
-# The Android `libretsurf.so` is built from `android/lib`, not from a second
-# crate-type here: the armhf build compiles non-PIC (see tools/armhf/build.sh) and
-# cannot link a shared object at all.
-[workspace]
-members = ["android/lib"]
-
 [lib]
 name = "retsurf"
 crate-type = ["lib"]
 
-[features]
-# PIZERO2W FORK: default flipped from upstream's ["webgl"] to ["software"].
-# This fork targets exactly one board (Raspberry Pi Zero 2 W + HyperPixel 4.0
-# Square) with no GPU-accelerated EGL/GLES path worth carrying by default — the
-# VideoCore IV's shared-memory GL path costs unified RAM this device has none of
-# spare, on a panel too small for the difference to be visible. A plain
-# `cargo build --release` now never pulls in `servo/webgl`, `gleam`, or the
-# EGL/surfman GL context at all on the Servo side; see [profile.release] below
-# for why `mod gl` itself (src/platform/window/gl.rs) still compiles — that is
-# a stage-2/3 item, not this one.
-default = ["software"]
-# WebGL through a surfman connection over SDL's own EGL display. Off by default
-# on this fork (see above); still available with `--features webgl` for anyone
-# building this tree for GPU-bearing hardware. WebGPU is a feature of its own
-# upstream and is not enabled here.
-webgl = ["servo/webgl"]
-# Software rendering end to end, for devices with no GPU at all (Miyoo Mini) or,
-# on this fork, no GPU path we want to spend RAM on (Pi Zero 2 W): swgl
-# rasterizes the page, SDL's own renderer paints the chrome. Now the default
-# (see above) rather than opt-in, even though swgl compiles every WebRender
-# shader as C++ — the one GPU-bearing target upstream carried this feature for
-# is not this fork's target.
-software = ["dep:swgl", "egui-sdl2/canvas-backend"]
-sdl2-bundled = ["sdl2/bundled"]
-sdl2-static-link = ["sdl2/static-link"]
+# PIZERO2W FORK: this fork targets exactly one board (Raspberry Pi Zero 2 W +
+# HyperPixel 4.0 Square) with no GPU-accelerated EGL/GLES path worth carrying —
+# the VideoCore IV's shared-memory GL path costs unified RAM this device has
+# none of spare, on a panel too small for the difference to be visible. Upstream
+# offered a GL/WebGL chrome backend (behind a `webgl` feature) alongside this
+# software one (`swgl` rasterizes the page, SDL's own renderer paints the
+# chrome); both the feature and the GL backend it gated (`servo/webgl`, the
+# EGL/surfman composite path, `android/` — Mali/Adreno/PowerVR all need real
+# GLES, which this fork no longer carries at all) were removed once the
+# pizero2w-only scope made them dead weight, rather than kept as a toggle
+# nothing here ever flips. `cargo build --release` is now always this one,
+# single rendering path, even though swgl compiles every WebRender shader as
+# C++ — the one GPU-bearing target upstream carried the GL path for is not this
+# fork's target.
 
-# PIZERO2W FORK: upstream kept fat LTO / codegen-units=1 / panic=abort CI-only
-# (CARGO_PROFILE_RELEASE_* env vars in the workflows) so a contributor's local
-# `cargo build --release` stayed fast across six platforms. This fork drops
-# that tradeoff on purpose: it has exactly one target, so "fast local release
-# build" is not a thing worth keeping, and every `cargo build --release` here
-# should produce the same binary CI would. `panic = "abort"` matches what
-# upstream already sets for every *embedded* per-device build (Miyoo's armhf,
-# the arm64 per-core handheld binaries) — it only stays `unwind` upstream on
-# the generic desktop-style Linux install, "so a Servo worker's panic does not
-# take a desktop install down with it" (build-linux-arm.yml). A single-purpose
+# This fork targets exactly one board (the Raspberry Pi Zero 2 W GamerCard;
+# every other platform — desktop Linux/macOS/Windows, Android, the PortMaster
+# and Miyoo per-core matrices — has been dropped from this repo, see
+# packaging/pizero2w/README.md), so unlike upstream retsurf, which kept fat
+# LTO / codegen-units=1 / panic=abort CI-only (CARGO_PROFILE_RELEASE_* env
+# vars in its workflows) so a contributor's local `cargo build --release`
+# stayed fast across six platforms, there is no "fast local release build"
+# worth keeping here: every `cargo build --release` on this tree should
+# produce the same binary `build-pizero2w.yml` would. `panic = "abort"`
+# matches what upstream already sets for every *embedded* per-device build
+# (Miyoo's armhf, the arm64 per-core handheld binaries) — upstream only kept
+# `unwind` on its generic desktop-style Linux install, so a Servo worker's
+# panic there would not take a desktop install down with it. A single-purpose
 # kiosk board gets no benefit from that resilience (there is no session to
 # save a crashing tab out of) and every byte of unwind-table is one this
 # device doesn't have spare; a panic still writes `RETSURF_PANIC_FILE` before
@@ -67,18 +53,18 @@ opt-level = "z"
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-# `strip` is for local and Android builds, which have no strip step of their own and
-# would otherwise ship symbols. The other two are release defaults, pinned so every
+# `strip` is for local builds, which have no strip step of their own and would
+# otherwise ship symbols. The other two are release defaults, pinned so every
 # build matches.
 strip = true
 debug-assertions = false
 overflow-checks = false
 
 # The rasterizers stay at -O3 even under a `z`-everywhere release profile: they
-# are the frame, and scalar swgl — the only path this fork's `software` default
-# rasterizes through — is not something to make slower in exchange for a
-# smaller .text. Unchanged from upstream (see tools/armhf/build.sh), which
-# needed the same exception for the same reason on a weaker CPU.
+# are the frame, and scalar swgl — the only path this fork rasterizes through —
+# is not something to make slower in exchange for a smaller .text. Unchanged
+# from upstream (see tools/armhf/build.sh), which needed the same exception for
+# the same reason on a weaker CPU.
 [profile.release.package.swgl]
 opt-level = 3
 [profile.release.package.webrender]
@@ -95,10 +81,10 @@ sdl2 = { version = "0.38.0", default-features = false }
 gleam = "0.15"
 glow = "0.17"
 surfman = "0.14"
-# WebRender's own software rasterizer (the `software` feature). Same 0.70 as the
-# `webrender` already in the graph — WR switches to its software paths on the
-# renderer name alone, so the two must be one release.
-swgl = { version = "0.70", optional = true }
+# WebRender's own software rasterizer — this fork's only rendering path. Same
+# 0.70 as the `webrender` already in the graph — WR switches to its software
+# paths on the renderer name alone, so the two must be one release.
+swgl = "0.70"
 log = "0.4.28"
 env_logger = "0.11.8"
 # Named off the fork rather than a version plus a patch: no such version is on
@@ -146,9 +132,10 @@ keyboard-types = "0.8.1"
 # Rebindable input: the gesture machine, `bindings.toml` and the editor model. Its
 # `sdl2` feature resolves to the same sdl2 as ours, so pad and key types are one set.
 inputbind = { git = "https://github.com/mxmgorin/inputbind", rev = "e33376b103bc49ea450eec54c251dfcdb251eb8b" }
-# Draws the chrome: egui over SDL2. `glow-backend` is the GPU half; the software
-# build adds `canvas-backend` through the `software` feature above.
-egui-sdl2 = { version = "0.12.0", default-features = false, features = ["glow-backend"] }
+# Draws the chrome: egui over SDL2. `canvas-backend` is the CPU half — this
+# fork's only one; `glow-backend` (the GPU half, upstream's default) went with
+# the GL chrome backend once the pizero2w-only scope made it dead weight.
+egui-sdl2 = { version = "0.12.0", default-features = false, features = ["canvas-backend"] }
 # Every chrome icon comes from this font: `bold` because lighter weights wash out at
 # the 15px the handhelds draw, `fill` for the solid halves of on/off pairs. From the
 # fork because upstream's newest release is still on egui 0.35, and two do not mix.

@@ -21,18 +21,11 @@ body:
         3. ...
 
   - type: input
-    id: device
-    attributes:
-      label: Device
-      placeholder: e.g. Anbernic RG35XX Plus, Miyoo Mini Flip, Pixel 8, Windows 11 PC
-    validations:
-      required: true
-
-  - type: input
     id: firmware
     attributes:
-      label: Firmware or OS
-      placeholder: e.g. muOS 2508.1, Knulli Gladiator, OnionOS 4.3.1-1, Android 14
+      label: OS version
+      description: This fork targets the Raspberry Pi Zero 2 W GamerCard exclusively.
+      placeholder: e.g. Debian 12 (bookworm) ARM64
     validations:
       required: true
 
@@ -41,13 +34,7 @@ body:
     attributes:
       label: Package
       options:
-        - PortMaster
-        - OnionOS
-        - Allium
-        - Android
-        - Linux
-        - Windows
-        - macOS
+        - GamerCard software store
         - Built from source
     validations:
       required: true
@@ -66,10 +53,5 @@ body:
     attributes:
       label: Logs
       description: |
-        Drag the files here, or paste the relevant part.
-
-        - PortMaster: `log.txt` in the retsurf port folder.
-        - OnionOS / Allium: `log.txt` in `App/Retsurf/` or `Apps/Retsurf.pak/`.
-        - Android: Settings > System > Diagnostics > Logs > Share.
-
-        After a crash, also attach `retsurf-panic.log`.
+        Drag the files here, or paste the relevant part. After a crash, also attach
+        `retsurf-panic.log`.

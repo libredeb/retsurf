@@ -195,6 +195,10 @@ impl AppUi {
         self.osk.set_style(style);
     }
 
+    pub fn set_osk_full_width(&mut self, full_width: bool) {
+        self.osk.set_full_width(full_width);
+    }
+
     pub fn set_pad_layout(&mut self, layout: PadLayout) {
         self.pad_layout = layout;
         self.osk.set_pad_layout(layout);

@@ -50,12 +50,27 @@ export SDL_AUDIODRIVER=pipewire
 # opens it, and chrome input AND every web game's navigator.getGamepads()
 # both get nothing — silently, no error anywhere. This mapping was
 # previously generated and verified for this exact board (GUID
-# 03000000412300003680000001010000, VID:PID 2341:8036): the nav disc wired to
-# two analog axes doubles as D-pad (dpup/down/left/right thresholds) AND the
-# Standard Gamepad's left stick (leftx/lefty) — retsurf's own virtual-cursor
-# aiming (src/event/gamepad.rs) reads the left stick, so this gets true
-# analog cursor movement, not just 4/8-way digital, for free.
-export SDL_GAMECONTROLLERCONFIG="03000000412300003680000001010000,Arduino Leonardo,a:b0,b:b1,x:b3,y:b4,back:b10,start:b11,leftshoulder:b5,rightshoulder:b6,dpdown:+a1,dpleft:-a0,dpright:+a0,dpup:-a1,leftx:a0,lefty:a1,platform:Linux,"
+# 03000000412300003680000001010000, VID:PID 2341:8036).
+#
+# No `dpXXX` entries — on purpose, and not how this was first shipped. This
+# nav disc has only two axes, so an earlier draft mapped `leftx`/`lefty`
+# *and* `dpup`/`dpdown`/`dpleft`/`dpright` onto those same two axes, meaning
+# every push past SDL's own (well below full-deflection) axis-to-button
+# threshold also fired a synthetic D-pad button. `Gamepad::aim()`
+# (src/event/gamepad.rs) merges the D-pad's digital ±1 *into* the analog
+# stick vector it also reads (`(stick + dpad).clamp(-1, 1)`) — by design, for
+# a real separate D-pad on a device with no stick at all — so on this board
+# every meaningful push saturated the aim vector to exactly ±1 the instant it
+# crossed that threshold, regardless of how far past it the disc actually
+# travelled. `[controls] cursor_curve` (see the README section below) shapes
+# values *between* 0 and ±1; it cannot do anything once the input is already
+# pinned at ±1, which is exactly why changing it changed nothing. Dropping
+# the `dpXXX` tokens stops SDL synthesizing those button presses at all, so
+# `aim()` is now driven purely by the real, continuous `leftx`/`lefty` value
+# — the only thing lost is hint mode's D-pad-press combo-letter shortcut
+# (`[controls] hint_badges` below turns that off too, since there is nothing
+# left to press it with).
+export SDL_GAMECONTROLLERCONFIG="03000000412300003680000001010000,Arduino Leonardo,a:b0,b:b1,x:b3,y:b4,back:b10,start:b11,leftshoulder:b5,rightshoulder:b6,leftx:a0,lefty:a1,platform:Linux,"
 
 # Raspberry Pi OS ships ca-certificates already, unlike the Miyoo firmwares
 # this packaging convention started on — no SSL_CERT_FILE override needed

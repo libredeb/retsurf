@@ -20,6 +20,14 @@ const WIDE_W: f32 = 54.0;
 /// The other rows are sized by hand to match, and a short one centres in it.
 const ROW_SPAN: f32 = 13.0 * KEY_W + WIDE_W + 13.0 * KEY_GAP;
 
+/// `[osk] full_width`: side margin the stretched grid still leaves, so it
+/// doesn't run flush to the panel's edges (points, same units as `ROW_SPAN`).
+const FULL_WIDTH_MARGIN: f32 = 24.0;
+
+/// `[osk] full_width`'s cap on how far it stretches a key, so a panel much
+/// wider than `ROW_SPAN` doesn't turn the keyboard into oversized slabs.
+const FULL_WIDTH_MAX_SCALE: f32 = 1.6;
+
 const KEY_FILL: egui::Color32 = egui::Color32::from_rgb(0x3a, 0x3a, 0x40);
 const HINT: egui::Color32 = egui::Color32::from_gray(150);
 
@@ -104,7 +112,7 @@ pub(super) fn add_osk(
     let shift = osk.shift();
     // Hand-tuned to fill `ROW_SPAN`, each on its own shorter row; Space gives up
     // the 40 the Fn key took.
-    let key_width = |row_len: usize, key: &Key| match key {
+    let base_key_width = |row_len: usize, key: &Key| match key {
         Key::Space => 200.0,
         Key::Shift => 85.0,
         Key::Enter => 76.0,
@@ -112,6 +120,16 @@ pub(super) fn add_osk(
         Key::Named { .. } => named_width(row_len),
         _ => KEY_W,
     };
+    // `full_width` stretches every key, gap and badge uniformly rather than
+    // widening the layout's own math: `scale` is 1.0 (a no-op) for every
+    // device that leaves the option off, so this changes nothing there.
+    let scale = if osk.full_width() {
+        let available = (ctx.content_rect().width() - FULL_WIDTH_MARGIN).max(ROW_SPAN);
+        (available / ROW_SPAN).clamp(1.0, FULL_WIDTH_MAX_SCALE)
+    } else {
+        1.0
+    };
+    let key_width = |row_len: usize, key: &Key| base_key_width(row_len, key) * scale;
 
     // A picker has to read as a question, not as a keyboard that happens to be up.
     if osk.picking() {
@@ -121,7 +139,16 @@ pub(super) fn add_osk(
 
     let area = osk_area(osk, bottom_inset).show(ctx, |ui| {
         panel().show(ui, |ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(KEY_GAP, 5.0);
+            // The button's own default text size, scaled the same as
+            // everything else — read once rather than guessing egui's
+            // default, so this tracks whatever the theme sets it to.
+            let button_font = ui
+                .style()
+                .text_styles
+                .get(&egui::TextStyle::Button)
+                .cloned()
+                .unwrap_or_else(|| egui::FontId::proportional(14.0));
+            ui.spacing_mut().item_spacing = egui::vec2(KEY_GAP * scale, 5.0 * scale);
             // The area sizes to the keys, so egui has no width to centre
             // against until they are laid out.
             let width = grid_width(osk, &key_width);
@@ -133,14 +160,20 @@ pub(super) fn add_osk(
                         let active = is_sel
                             || (*key == Key::Shift && shift)
                             || (*key == Key::Caps && osk.caps);
-                        let size = egui::vec2(key_width(row.len(), key), KEY_H);
+                        let size = egui::vec2(key_width(row.len(), key), KEY_H * scale);
                         let fill = if active { ACCENT } else { KEY_FILL };
-                        let button = egui::Button::new(
-                            egui::RichText::new(osk.key_label(*key)).color(egui::Color32::WHITE),
-                        )
-                        .fill(fill)
-                        .corner_radius(6.0)
-                        .min_size(size);
+                        let mut label =
+                            egui::RichText::new(osk.key_label(*key)).color(egui::Color32::WHITE);
+                        // Left at the inherited default when `scale` is 1.0 (every
+                        // device with `full_width` off), rather than reapplying the
+                        // same size through a different code path.
+                        if scale != 1.0 {
+                            label = label.size(button_font.size * scale);
+                        }
+                        let button = egui::Button::new(label)
+                            .fill(fill)
+                            .corner_radius(6.0)
+                            .min_size(size);
                         let response = ui.add(button);
                         if response.clicked() {
                             commands.push(AppCommand::Input(InputCommand::Osk(OskCommand::Press(
@@ -154,10 +187,11 @@ pub(super) fn add_osk(
                             let alt = osk.layout().resolve_char(*ch, !shift, osk.caps);
                             if !ch.is_alphabetic() && alt != main {
                                 ui.painter().text(
-                                    response.rect.right_top() + egui::vec2(-4.0, 2.0),
+                                    response.rect.right_top()
+                                        + egui::vec2(-4.0 * scale, 2.0 * scale),
                                     egui::Align2::RIGHT_TOP,
                                     alt,
-                                    egui::FontId::proportional(10.0),
+                                    egui::FontId::proportional(10.0 * scale),
                                     HINT,
                                 );
                             }
@@ -166,10 +200,10 @@ pub(super) fn add_osk(
                         // as a small badge in the top-left corner.
                         if let Some(btn) = key.button_hint(face) {
                             ui.painter().text(
-                                response.rect.left_top() + egui::vec2(4.0, 2.0),
+                                response.rect.left_top() + egui::vec2(4.0 * scale, 2.0 * scale),
                                 egui::Align2::LEFT_TOP,
                                 btn,
-                                egui::FontId::proportional(10.0),
+                                egui::FontId::proportional(10.0 * scale),
                                 HINT,
                             );
                         }

@@ -397,6 +397,7 @@ pub(super) static FIELDS: &[Field] = &[
     f(S::Controls, "Cursor & scroll", "Hint badges",        flag!(controls.hint_badges), false),
 
     f(S::Controls, "Keyboard",    "On-screen keyboard",     choice!(osk.style: OskStyle), false),
+    f(S::Controls, "Keyboard",    "Full-width keyboard",    flag!(osk.full_width), false),
     #[cfg(target_os = "android")]
     f(S::Controls, "Keyboard",    "System keyboard",        flag!(controls.system_keyboard), false),
     f(S::Controls, "Keyboard",    "Stick threshold",        float!(controls.osk_nav_threshold as f32, bounds::OSK_NAV_THRESHOLD, 0.05, 2), false),
@@ -425,7 +426,6 @@ pub(super) static FIELDS: &[Field] = &[
     f(S::System,   "Performance", "Frame cap (fps)",        int!(performance.max_fps as u32, bounds::MAX_FPS, 5, Some("Uncapped")), false),
     f(S::System,   "Display",     "Window width",           int!(display.width as u32, bounds::WIDTH, 16), true),
     f(S::System,   "Display",     "Window height",          int!(display.height as u32, bounds::HEIGHT, 16), true),
-    f(S::System,   "Display",     "Use OpenGL ES",          flag!(display.use_gles), true),
     f(S::System,   "Downloads",   "Save folder",            text!(downloads.dir), true),
     f(S::System,   "Data",        "Clear browsing data",    Kind::Action { task: Task::ClearData }, false),
     f(S::System,   "Updates",     "Update channel",         choice!(update.channel: Channel), false),

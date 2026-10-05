@@ -11,6 +11,13 @@ pub struct OskConfig {
     /// falls back to `["en"]`, so the keyboard always works.
     pub layouts: Vec<String>,
     pub style: OskStyle,
+    /// Stretch the grid keyboard to fill the panel's width instead of its
+    /// hand-tuned design size (`ROW_SPAN` in `src/ui/osk/mod.rs`), which is
+    /// narrower than most square handheld panels. Off by default: every
+    /// desktop and the other handhelds already size their window around that
+    /// design, so stretching it there would just make the keys oversized.
+    /// Grid style only — the wheel has no row width to stretch.
+    pub full_width: bool,
 }
 
 impl Default for OskConfig {
@@ -18,6 +25,7 @@ impl Default for OskConfig {
         Self {
             layouts: vec!["en".to_string(), "ru".to_string()],
             style: OskStyle::default(),
+            full_width: false,
         }
     }
 }

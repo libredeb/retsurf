@@ -155,6 +155,8 @@ pub struct Osk {
     /// Whether the picker is on [`NAMED_ROWS`] rather than the characters.
     named: bool,
     style: OskStyle,
+    /// Stretch the grid to fill the panel's width (`[osk] full_width`).
+    full_width: bool,
     wheel: Wheel,
     /// How far the keyboard was moved from its place at the bottom, in logical px.
     offset: (f32, f32),
@@ -200,6 +202,7 @@ impl Osk {
             picking: false,
             named: false,
             style: cfg.style,
+            full_width: cfg.full_width,
             wheel: Wheel::new(pad_layout),
             offset: (0.0, 0.0),
             bounds: None,
@@ -210,6 +213,16 @@ impl Osk {
     pub fn set_style(&mut self, style: OskStyle) {
         self.style = style;
         self.wheel.centre();
+    }
+
+    pub fn set_full_width(&mut self, full_width: bool) {
+        self.full_width = full_width;
+    }
+
+    /// Whether the grid should stretch to fill the panel's width (`src/ui/osk`
+    /// reads this to scale its otherwise fixed-size key layout).
+    pub fn full_width(&self) -> bool {
+        self.full_width
     }
 
     pub fn set_pad_layout(&mut self, layout: PadLayout) {

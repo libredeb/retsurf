@@ -22,14 +22,20 @@ This directory is being built up in the same stages as the refactor itself:
       devices` output and its labwc/Wayland/PipeWire stack were in hand,
       rather than assumed from the spec sheet alone.
 - [x] **CI**: `.github/workflows/build-pizero2w.yml` builds and packages a
-      ready-to-copy `retsurf-pizero2w.zip` on every nightly/release, the one
-      workflow in this repo that doesn't fight the fork's own `software`
-      default back to `webgl`. `config.toml`'s `[update] auto_check = false`
-      is the safety note that goes with it.
-- [ ] **Follow-up, not yet done**: `src/update/mod.rs`'s `resolve_kind()`
-      needs a pizero2w-specific case so a *manual* update check doesn't still
-      offer the wrong (`webgl`-featured) asset — see the update-safety
-      section below.
+      ready-to-copy `retsurf-pizero2w.zip` on every nightly/release — this
+      fork's only remaining build workflow, needing no feature override of
+      its own now that `software` is this fork's only rendering path at all.
+- [x] **Platform scope and GL/WebGL removal.** This fork dropped every
+      non-pizero2w platform from the repo (see the CI section below) and then
+      the GL/WebGL chrome backend itself, Cargo feature and all, once nothing
+      left in the tree still needed it — see the "GL/WebGL backend removed
+      entirely" section below.
+- [x] **Grid launcher integration.** `config.toml`'s `[osk] full_width`, a
+      `start+select` → `quit` chord in `bindings.toml`, and
+      `retsurf.desktop`'s `Categories=Game;` — see the three sections below.
+      This is the device running its own systemd → labwc → custom-grid-
+      launcher chain, with retsurf as one tile among other games rather than
+      the only thing on screen.
 
 ## Why `embedded`, not a new tier
 
@@ -93,11 +99,13 @@ unusual pads in production (`export SDL_GAMECONTROLLERCONFIG=
 before it opens any device, and `is_game_controller()` starts returning true
 for it. `launch.sh` now carries the mapping already generated and verified
 for this board — see its comment for the GUID and what each field does. One
-detail worth knowing: the nav disc reports as two analog axes doing double
-duty as both the D-pad (`dpup`/`dpdown`/`dpleft`/`dpright` thresholds) *and*
-the Standard Gamepad's left stick (`leftx`/`lefty`) — so
-`src/event/gamepad.rs`'s cursor aiming gets real analog movement, not just
-8-way digital, at no extra cost.
+detail worth knowing: the nav disc is only two analog axes, mapped onto the
+Standard Gamepad's left stick (`leftx`/`lefty`) alone — **no `dpXXX` tokens**,
+unlike an earlier draft of this mapping, which also pointed `dpup`/`dpdown`/
+`dpleft`/`dpright` at those same two axes and ended up saturating the cursor
+aim vector on every meaningful push; see the Cursor precision section below
+for the full story and why this is the one part of the mapping that changed
+after testing on the real unit, not just at generation time.
 
 The mapping covers exactly 8 physical buttons (a/b/x/y/back/start/l1/r1,
 matching the spec's "8 tactile buttons" precisely) and no L2/R2/L3/R3 — this
@@ -164,9 +172,9 @@ driver-owns-the-screen setup `panel_size()` was written for. `lock_size`
 (SDL's `resizable` flag, see `src/platform/window/mod.rs`) is what keeps
 retsurf's own window from being dragged off 720x720 if the custom launcher
 or a labwc keybind ever interacts with it directly, and
-`src/event/window.rs`'s generic `WindowEvent::Resized` handling (needed for
-desktop/Android, where it stays untouched) simply never fires here as a
-result — not because nothing could send it, but because the flag says not to.
+`src/event/window.rs`'s generic `WindowEvent::Resized` handling (shared,
+general-purpose code, left as-is) simply never fires here as a result — not
+because nothing could send it, but because the flag says not to.
 
 ## Cursor precision: a response curve for the nav disc
 
@@ -178,23 +186,122 @@ leaves no slow, easy-to-hold zone for a precise final approach, especially on
 a short-throw nav disc rather than a long-throw thumbstick. This fork adds
 `[controls] cursor_curve` (new config field, `src/config/controls.rs`;
 exposed in Settings > Controls as **Cursor precision**): an exponent applied
-to the deflection before the speed scaling, `1.0` (every other device,
-unchanged — this is the compiled-in default everywhere) being the previous
-linear behavior and higher values softening small deflections while leaving
-full deflection at the same top speed (`1.0` and `-1.0` are fixed points of
-any exponent, and so is the D-pad's own digital `±1` — this never changes
-D-pad-only aiming, only the stick's). `config.toml` pins `cursor_curve = 2.0`
-here; the exact value is a feel question for the actual nav disc hardware,
-which is why it's also a live Settings slider, not just a config file edit.
+to the deflection before the speed scaling, `1.0` (the compiled-in default)
+being the previous linear behavior and higher values softening small
+deflections while leaving full deflection at the same top speed (`1.0` and
+`-1.0` are fixed points of any exponent — more on that below). `config.toml`
+pins `cursor_curve = 2.0` here; the exact value is a feel question for the
+actual nav disc hardware, which is why it's also a live Settings slider, not
+just a config file edit.
+
+**Why trying `2.0`, `1.0` and `0.3` all felt identical on the real unit**: a
+curve can only shape a value *between* its fixed points — it does nothing
+once the input is already pinned at one of them. `Gamepad::aim()`
+(`src/event/gamepad.rs`) is `(stick + dpad).clamp(-1, 1)`, where `dpad` is a
+genuinely digital `±1`/`0` by design — correct for a real separate D-pad
+(the Miyoo Mini has one and no stick at all, and there a D-pad press should
+always aim at full speed), wrong the moment a D-pad press and a stick push
+are the *same* physical motion. That was exactly this board's original
+`SDL_GAMECONTROLLERCONFIG` (see `launch.sh`'s own comment): it mapped
+`leftx`/`lefty` *and* `dpup`/`dpdown`/`dpleft`/`dpright` onto the same two
+nav-disc axes, so every push past SDL's own axis-to-button threshold
+(well below full deflection) also fired a synthetic D-pad press, adding a
+full `±1` into `aim()` and saturating it there regardless of how far past
+that threshold the disc actually travelled. One push, one instant snap to
+top speed — a curve exponent changes how `aim` is shaped between 0 and `±1`,
+and this input was never landing anywhere in that range.
+
+The fix was at the input-mapping layer, not the curve: `launch.sh` no longer
+maps any `dpXXX` token, so SDL never synthesizes those button presses off
+this disc's axes, and `aim()` is left with the genuine, continuous
+`leftx`/`lefty` value end to end. `cursor_curve` only has real, unsaturated
+input to shape as of that change — re-tune it live in Settings now that it
+actually does something, rather than trusting `2.0` as a value that was
+never actually tested on this hardware. The one thing lost: hint mode's
+D-pad-press combo-letter shortcut (`InputCommand::DpadPress`,
+`src/app/router.rs`), which needs a real D-pad press that no longer exists —
+`config.toml` turns `[controls] hint_badges` off for exactly that reason,
+falling hint mode back to plain spatial hopping via the stick (unaffected by
+any of this, since it was already reading `stick` — the undiluted left-stick
+vector — rather than `aim`).
+
+## On-screen keyboard: stretched to the panel's actual width
+
+The grid keyboard's layout (`src/ui/osk/mod.rs`) is a hand-tuned design sized
+to `ROW_SPAN` (574 points) — narrower even than the 640-wide chrome design
+it was tuned against, let alone this 720px square panel at the `1.0` zoom the
+square-compositing section above lands it on. The keys were never going to
+grow to fill the extra width on their own: `src/ui/scale.rs`'s global zoom
+factor scales the *whole* chrome uniformly against one design size, and any
+panel width past that design already goes to the page's own viewport, not to
+chrome widgets like the keyboard — confirmed by reading both files, not
+guessed from the photo alone.
+
+This fork adds `[osk] full_width` (new config field, `src/config/osk.rs`;
+exposed in Settings > Controls as **Full-width keyboard**; grid style only —
+the wheel picker has no row width to stretch): when on, every key, gap and
+badge in `src/ui/osk/mod.rs` is multiplied by one `scale` factor computed
+from the actual available panel width (`ctx.content_rect().width()`) against
+`ROW_SPAN`, clamped to `[1.0, 1.6]` so an unusually wide panel can't blow the
+keys up into oversized slabs. `scale` is exactly `1.0` — a no-op, same numbers
+as before this change — whenever the flag is off, which is every device
+except this one: default `false` in `src/config/osk.rs`, only flipped on in
+`config.toml` below. `config.toml` pins `full_width = true` here, landing
+around `scale ≈ 1.2` on this 720x720 panel (`(720 - 24) / 574`).
+
+## START+SELECT: freed for the grid launcher to intercept
+
+This board doesn't run retsurf as *the* thing on screen — its own systemd
+service starts [labwc](https://github.com/labwc/labwc), which autostarts a
+custom grid launcher, and retsurf is one tile in that grid among other games.
+A launcher built that way needs some way to know the user wants back out
+to the grid; without one, the only exits left are a window-manager close
+button this kiosk setup has none of, or killing the process from outside.
+
+retsurf already carries exactly the primitive this needs:
+`Action::Quit` (`src/event/bindings.rs`) maps straight onto the engine's
+normal clean-exit path (session save, Servo shutdown,
+`std::process::exit(0)`) and is **unbound by default upstream, on purpose** —
+its own doc comment says so — precisely so a device like this one can bind
+it to whatever its hardware can spare. `bindings.toml` below binds
+`start+select` (both orders, same idiom as the stock `l2+r2`/`r2+l2`) to
+`quit`.
+
+No `launch.sh` change was needed to make this reach the launcher: the script
+already backgrounds `./retsurf` and does `wait "$app"` on it (see its
+closing lines) — a self-initiated `process::exit(0)` from the quit chord
+makes that `wait` return immediately, same as it already would for a crash
+or a `kill`, and `launch.sh` then falls off its own end right after running
+`swap_tuning_stop`. Whatever process forked/execs `launch.sh` itself (the
+grid launcher, directly or through its own autostart chain) sees *that*
+process exit the moment retsurf does — standard fork/wait launcher-grid
+behavior, nothing bespoke to add on this side of it.
+
+## `.desktop`: `Categories=Game;` for the grid launcher's own scan
+
+`resources/retsurf.desktop` (the shared, generic entry for a normal desktop
+menu/taskbar) ships `Categories=Network;WebBrowser;` — the categories a
+*browser* belongs under, not a *game*. This board's custom launcher almost
+certainly filters/groups its grid by `Categories=Game;` (the freedesktop.org
+convention this kind of launcher would reasonably follow), so the shared
+file was left untouched — editing it to `Game;` would be wrong for every
+desktop install — and `retsurf.desktop` here is a new, device-specific entry
+instead: `Categories=Game;`, `Exec=` pointed at `launch.sh` rather than the
+bare binary (so the controller mapping, env hints and first-run config
+install all still happen), and no `MimeType`/`%u` (a kiosk tile the grid
+launcher starts with no arguments, not a file-manager association). Adjust
+the `Exec=` path to wherever this directory actually lands on the image —
+see the Install section below. `build-pizero2w.yml` now copies it into the
+same packaged `retsurf-pizero2w.zip` as everything else here.
 
 ## 30 fps, not the panel's advertised 60
 
 `[performance] max_fps = 30` in `config.toml` is pinned, not left at
 `PerformanceConfig::default()` (also `30`, so behaviorally a no-op today) —
 pinned so a later edit "fixing" this to `60` to match the HyperPixel's spec
-sheet doesn't regress battery life by accident. Every frame on
-`software_render = true` is a full 720x720 CPU recomposite
-(`src/platform/window/software.rs`), with no GPU compositor pass to amortize
+sheet doesn't regress battery life by accident. Every frame is a full
+720x720 CPU recomposite (`src/platform/window/software.rs`, this fork's only
+rendering path), with no GPU compositor pass to amortize
 it the way labwc's own desktop compositing does — doubling the rate doubles
 that cost, for a kiosk-style browser UI rather than a twitch game, on a 1600
 mAh cell. Raise it only after measuring actual battery life and per-frame
@@ -231,14 +338,16 @@ Two more things this file assumed are now verified against the real board:
   environment (common with systemd `--user` units) —
   `src/platform/startup.rs` already auto-selects `wayland` whenever that
   variable is present and the driver is otherwise unset. This also means the
-  GPU is alive and in active use *for compositing* — `software_render = true`
+  GPU is alive and in active use *for compositing* — software rendering
   above is still the right call regardless (it's about not doubling GPU
-  memory pressure with retsurf's own EGL/WebGL context on top of what labwc
-  already uses, a RAM argument, not a "no GPU exists" one), and the
-  `SoftwareBackend` path (`src/platform/window/software.rs`) never requests
-  `SDL_WINDOW_OPENGL` on its window in the first place
-  (`build_window(video, config, false)`), so it cannot pick a GL-based SDL
-  renderer even by accident — confirmed zero GL/EGL touch under labwc too.
+  memory pressure with an EGL/WebGL context of retsurf's own on top of what
+  labwc already uses, a RAM argument, not a "no GPU exists" one; moot anyway
+  now that this fork carries no such context at all — see the "GL/WebGL
+  backend removed entirely" section below). The `SoftwareBackend` path
+  (`src/platform/window/software.rs`) never requests `SDL_WINDOW_OPENGL` on
+  its window in the first place (`build_window(video, config, false)`), so
+  it cannot pick a GL-based SDL renderer even by accident — confirmed zero
+  GL/EGL touch under labwc too.
 - **Audio**: PipeWire. `launch.sh` now exports `SDL_AUDIODRIVER=pipewire`
   (Debian 12's SDL2 2.26 has a native backend for it).
 
@@ -247,68 +356,121 @@ Two more things this file assumed are now verified against the real board:
 | File | Purpose |
 | --- | --- |
 | `config.toml` | Copied to the data dir on first run as `config.toml`. |
-| `bindings.toml` | Copied to the data dir on first run; rebinds `zoom_in`/`zoom_out`/`zoom_reset` off the l2/r2 triggers this board doesn't have (see the Input section above). Every other gesture comes back from retsurf's own compiled-in defaults. |
+| `bindings.toml` | Copied to the data dir on first run; rebinds `zoom_in`/`zoom_out`/`zoom_reset` off the l2/r2 triggers this board doesn't have, and binds `start+select` to `quit` for the grid launcher (see the Input section and the START+SELECT section above). Every other gesture comes back from retsurf's own compiled-in defaults. |
 | `fonts.conf.in` | Fontconfig template; `launch.sh` only installs it if the image's own fontconfig can't resolve a sans-serif font at all. `@FCCACHE@` is substituted with a writable cache path. |
+| `retsurf.desktop` | Device-specific desktop entry with `Categories=Game;`, for the custom grid launcher to pick up as a tile — see the `.desktop` section above. Not installed by `launch.sh`; copy it wherever your launcher scans. |
 | `launch.sh` | Example launcher: env vars, first-run config/bindings install, conditional fontconfig template, opt-in zram/swap tuning (`swap-tuning.on`). Adjust `gamedir`/controller mapping/autostart to your image. |
 | `../../.github/workflows/build-pizero2w.yml` | Not in this directory, but builds and packages everything above into `retsurf-pizero2w.zip` on every nightly and tagged release — see the CI section below. |
 
-## CI: `build-pizero2w.yml`, and where it differs from every other job
+## CI: `build-pizero2w.yml` is the only build workflow left
 
-None of this repo's existing workflows ever produced a binary this board
-should run: `build-linux-arm.yml`'s per-core matrix and `build-universal` job,
-and `build-linux.yml`'s desktop build, all explicitly pass
-`--no-default-features --features webgl` to pin back to a GPU-featured build
-— correct for PortMaster handhelds and desktop Linux, the opposite of what
-this fork's own default flip (`Cargo.toml`, `default = ["software"]`) was
-for. `build-pizero2w.yml` is the one that doesn't fight that default: plain
-`cargo build --release` with `RUSTFLAGS: -C target-cpu=cortex-a53` (the
-board's CPU is fixed and known, unlike PortMaster's A35/A53/A55 spread), no
-feature flags at all. It also skips the `ubuntu:20.04` glibc-floor container
-every ARM job here otherwise needs: that floor exists for a decade of
-mismatched handheld firmwares, not a known, modern, single target OS (Debian
-12 bookworm, glibc 2.36) — the plain `ubuntu-22.04-arm` runner (glibc 2.35) is
-already an older floor than the device, and mozjs_sys's prebuilt SpiderMonkey
-(itself built on Ubuntu 22.04) needs no `MOZJS_FROM_SOURCE` rebuild to match
-it, unlike the floored jobs.
+This repo used to aggregate six platforms' worth of build workflows
+(desktop Linux/macOS/Windows, Android, and the PortMaster/Miyoo per-core
+matrices) behind `nightly.yml`. All of that — `build-android.yml`,
+`build-linux.yml`, `build-linux-armhf.yml`, `build-linux-arm.yml`,
+`build-macos.yml`, `build-windows.yml`, and the now-unused
+`.github/actions/arm-build-env` composite action they shared — has been
+**deleted**: this fork targets the Raspberry Pi Zero 2 W GamerCard
+exclusively, and none of those workflows ever produced a binary this board
+should run (most of them explicitly pinned `--no-default-features --features
+webgl` back to a GPU-featured build — a feature this fork has since removed
+outright, see below). `build-pizero2w.yml` is simply plain `cargo build
+--release` with `RUSTFLAGS: -C target-cpu=cortex-a53` (the board's CPU is
+fixed and known), no feature flags at all (there being only one build left
+to produce), no `ubuntu:20.04` glibc-floor container (that floor existed for
+a decade of mismatched handheld firmwares, not this known, modern, single
+target OS — Debian 12 bookworm, glibc 2.36 — where the plain
+`ubuntu-22.04-arm` runner, glibc 2.35, is already an older floor than the
+device).
 
 It uploads two artifacts: `retsurf-pizero2w-bin` (the bare binary, CI-only,
 14-day retention) and `retsurf-pizero2w` (the binary plus every file this
 directory ships — `config.toml`, `bindings.toml`, `fonts.conf.in`,
-`launch.sh` — laid out exactly as the Install section below copies them,
-ready to unzip straight into `/opt/retsurf/`). A tagged release also zips the
-second one with a `.sha256` sidecar, and `nightly.yml` now builds and
-publishes it alongside every other platform.
+`retsurf.desktop`, `launch.sh` — laid out exactly as the Install section
+below copies them, ready to unzip straight into `/opt/retsurf/`). A tagged
+release also zips the second one with a `.sha256` sidecar, and `nightly.yml`
+— now trimmed to just `changed → pizero2w → publish`, with no other
+platform's artifacts to assemble — builds and publishes it every night.
 
-**Before this release asset exists publicly, read the update-safety note
-right below** — it's the reason `config.toml` ships `[update] auto_check =
-false`.
+## GL/WebGL backend removed entirely
 
-## Update safety: `[update] auto_check = false` is load-bearing here
+Deleting the other platforms' CI workflows (above) left the `webgl` Cargo
+feature and the GL chrome backend it gated (`src/platform/window/gl.rs`)
+with no CI job that ever built them in this repo — this board's own
+`software` default never touched either. Rather than leave that as dead
+weight nothing exercises, both were removed outright, along with everything
+that existed only to feed them:
 
-`src/update/mod.rs`'s install-kind detection (`resolve_kind()`) has no case
-for this board: it only special-cases PortMaster (a sibling `Retsurf.sh`
-file) before falling through to "any writable-directory `linux`/`aarch64`
-install" as `Kind::Single`, pointed at the **generic** release asset,
-`retsurf-linux-aarch64.zip` — the `webgl`-featured, untuned universal build
-from `build-linux-arm.yml`, not this board's own `retsurf-pizero2w.zip`. With
-`auto_check` on (the engine's own default), this board would see "update
-available" and, if installed, get swapped onto a binary that doesn't even
-compile `SoftwareBackend` in — `config.toml`'s `software_render = true` would
-have nothing to select at that point. `config.toml` above turns the
-background check off so this never ambushes anyone from a notification; it
-doesn't stop a manual check from Settings > About, which is still a trap
-until `resolve_kind()` gains a pizero2w-specific case (a sibling-file check
-in the same spirit as `portmaster_paths()`, pointed at
-`retsurf-pizero2w.zip`) — filed as a follow-up, not yet done.
+- **`webgl` feature and the GL chrome backend**: `src/platform/window/gl.rs`
+  (`GlBackend`, SDL2's own GL/GLES context), `src/platform/render/sdl.rs`
+  (`SdlRenderingContext`, the FBO it rendered into), and
+  `src/platform/render/webgl.rs`/`webgl_off.rs` (the EGL composite path
+  WebGL needed to reach the screen) are all deleted. `src/platform/window/
+  mod.rs`'s `build_backend()` no longer picks between GL and software at
+  runtime — it only ever builds `SoftwareBackend` now, since that was
+  already the only thing this board's `config.toml` ever asked for.
+- **`[display] use_gles` / `software_render`**: both config fields removed
+  from `src/config/display.rs` (and the "Use OpenGL ES" Settings row) — with
+  no GL backend left to pick between, a config knob that could only ever
+  mean "use the one renderer that exists" is confusion, not a setting.
+  `config.toml` below no longer sets either.
+- **Android (`android/`)**: `android/lib/Cargo.toml` depended on
+  `retsurf = { ..., features = ["webgl"] }` directly — Mali/Adreno/PowerVR
+  phones have no software-rendering fallback build upstream ever shipped, so
+  removing `webgl` left that crate permanently unbuildable. Since Android
+  was already out of scope for this repo (the "other devices are discarded"
+  decision above covers it too), the whole `android/` directory and the
+  `[workspace]` entry for it are gone rather than left half-broken. The
+  scattered `#[cfg(target_os = "android")]` blocks still inside `src/`
+  (15 files) are left exactly as they were: harmless, already never compiled
+  by anything this repo builds, and out of scope for this pass — only the
+  one crate that structurally *required* `webgl` to exist is gone.
+- **`tests/run_pages.py`**: the `webgl` and `webgl2-features` cases (and
+  their `tests/pages/webgl*.html`/`.js` fixtures) are deleted — they can
+  never produce a context to probe once `servo/webgl` isn't compiled in at
+  all, not just off by default. `.github/workflows/check.yml` dropped
+  `--no-default-features --features webgl` from its build/test/clippy steps
+  as a result: it now validates the exact `software` default
+  `build-pizero2w.yml` ships, rather than a GPU path this repo can no
+  longer produce.
+
+Left untouched on purpose: `tools/arm64/build.sh`'s `--features webgl` and
+`tools/armhf/build.sh`'s `--features software` invocations (both preserved,
+per the "other devices discarded" decision, purely as reference material for
+a future separate project) will no longer run against *this* repo's
+`Cargo.toml` — neither feature exists here anymore. That is an accepted
+consequence of preserving those two directories unedited, not an oversight;
+flagging it here since it is the one place their contents and this repo's
+current `Cargo.toml` now disagree.
+
+## Updates: the console's own store, not retsurf's in-app updater
+
+This board does not use `src/update`'s self-update path at all — updates are
+a `.deb` the console's own software store installs when a new package is
+published, outside retsurf entirely. `config.toml`'s `[update] auto_check =
+false` turns off the in-app background check so it never contradicts the
+store by announcing an update of its own (there also is no "update" for it
+to find any more in the sense that mattered before: `resolve_kind()`'s
+generic fallback, `retsurf-linux-aarch64.zip`, was the universal
+`build-linux-arm.yml` build — deleted above along with every other
+non-pizero2w asset `nightly.yml` used to publish, so a manual check from
+Settings > About no longer has a wrong, mismatched asset to offer; it has
+none at all). `resolve_kind()` gaining a pizero2w-specific case is no longer
+tracked as a follow-up here for the same reason: this board's updates don't
+go through it, by design, not pending a fix.
 
 ## Install
 
 **Easiest**: download `retsurf-pizero2w.zip` from a [release](../../releases)
 (or the `retsurf-pizero2w` artifact off a `build-pizero2w.yml` Actions run)
 and unzip it straight into `/opt/retsurf/` — it already contains the binary
-plus all four files this directory ships, laid out ready to run
+plus all five files this directory ships, laid out ready to run
 (`chmod +x /opt/retsurf/launch.sh` once, since zip doesn't always preserve
-the executable bit).
+the executable bit). Point your grid launcher's scan at `retsurf.desktop`
+separately (or copy it to wherever it expects entries, e.g.
+`~/.local/share/applications/`) — it isn't installed automatically the way
+`config.toml`/`bindings.toml` are, since `launch.sh` only ever touches its
+own data dir, not the launcher's.
 
 **Building it yourself** instead — on-device, or any arm64 Linux box:
 
@@ -318,45 +480,43 @@ cp /path/to/retsurf /opt/retsurf/
 cp packaging/pizero2w/config.toml /opt/retsurf/
 cp packaging/pizero2w/bindings.toml /opt/retsurf/
 cp packaging/pizero2w/fonts.conf.in /opt/retsurf/
+cp packaging/pizero2w/retsurf.desktop /opt/retsurf/
 cp packaging/pizero2w/launch.sh /opt/retsurf/ && chmod +x /opt/retsurf/launch.sh
 ```
 
-The binary itself needs building with this fork's new defaults (stage 3):
-a plain `cargo build --release` already produces a CPU-only binary matching
-`[display] software_render = true` above — no extra `--features` flag needed,
-unlike every *other* platform this repo still ships GPU builds for (see the
-repo root's `Cargo.toml` and the `README.md`/`CHANGELOG.md` for that change;
+The binary itself needs no feature flags at all: a plain `cargo build
+--release` already produces the CPU-only binary this board runs — this
+fork's only rendering path now, not merely its default (see the "GL/WebGL
+backend removed entirely" section above and the repo root's `Cargo.toml`;
 `.github/workflows/build-pizero2w.yml` is the CI job that builds exactly
-this, see the CI section above for why it looks nothing like its siblings).
+this).
 
-Unlike the PortMaster per-core matrix (`tools/arm64/build.sh`), which must
-produce one binary that runs on A35, A53 *and* A55 cores, this board's CPU is
-fixed and known: a Cortex-A53 quad-core. Building directly on the device
-(Debian 12 arm64) can safely tell rustc that, which a generic/portable
-build does not:
+Unlike the PortMaster per-core matrix (`tools/arm64/build.sh`, kept only as
+reference material per the "other devices discarded" decision above), which
+had to produce one binary that ran on A35, A53 *and* A55 cores, this board's
+CPU is fixed and known: a Cortex-A53 quad-core. Building directly on the
+device (Debian 12 arm64) can safely tell rustc that, which a generic/
+portable build does not:
 
 ```sh
 RUSTFLAGS="-C target-cpu=cortex-a53" cargo build --release
 ```
 
 Not added to the repo's `.cargo/config.toml`: that file's `rustflags` would
-apply to every `aarch64-unknown-linux-gnu` build in this repo, including the
-PortMaster one that must stay portable across A35/A53/A55 — this belongs in
-this board's own build invocation (or a `RUSTFLAGS` export in a local
-build script), not shared.
+apply to every `aarch64-unknown-linux-gnu` build — this belongs in this
+board's own build invocation (or a `RUSTFLAGS` export in a local build
+script), not shared.
 
 ## Minor: `[experimental] webgl2` stays on even though WebGL can't run
 
 `ExperimentalConfig::default()` (the "Balanced" preset, `src/config/experimental.rs`)
-ships `webgl2 = true`. On this fork's software-only default, `servo/webgl`
-isn't compiled in at all (see the repo's `Cargo.toml`), so `canvas.getContext
-('webgl2')` returns `null` regardless of this preference — it's a no-op, not
-a bug: the flag only governs whether the (compiled-out) WebGL backend is
-*permitted*, not whether it exists. **Left as-is here, on purpose**:
-`packaging/miyoo/shared/config.toml` — the one other device in this repo that
-already ships `--features software` with no `webgl` in production today —
-makes the same choice, leaving the preset at its default rather than special
--casing a cosmetic mismatch in the Settings screen. Flip it to `false` only
-if a `[debug] memory_overlay` session on-device shows the few KB the unused
-preference string costs are worth chasing; it will not change behavior
-either way.
+ships `webgl2 = true`. `servo/webgl` doesn't exist as a buildable feature in
+this fork's `Cargo.toml` at all anymore (see the "GL/WebGL backend removed
+entirely" section above), so `canvas.getContext('webgl2')` returns `null`
+regardless of this preference — it's a no-op, not a bug: the flag only
+governs whether the (never compiled) WebGL backend is *permitted*, not
+whether it exists. **Left as-is here, on purpose**: it's a Servo runtime
+preference, unrelated to the Cargo feature, and this preset already shipped
+in this exact "on but inert" state before the feature was removed — flipping
+it to `false` would only be cosmetic in the Settings screen, not a behavior
+change either way.

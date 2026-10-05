@@ -4,108 +4,27 @@ retsurf builds with plain `cargo`; rustup installs the Rust version pinned in
 [`rust-toolchain.toml`](../rust-toolchain.toml). Servo brings C/C++ dependencies of its
 own, so the first build is long.
 
+This fork targets exactly one board — the Raspberry Pi Zero 2 W GamerCard — so there is
+only one build, with no GPU feature to opt into: CPU-only (swgl + SDL's own renderer) end
+to end, on Debian 12 (bookworm) ARM64.
+
 ## Linux
 
 ```sh
 sudo apt-get install -y build-essential clang cmake curl git gperf pkg-config python3 \
   libssl-dev libdbus-1-dev libfreetype6-dev libglib2.0-dev \
-  libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev \
   libharfbuzz-dev liblzma-dev libudev-dev libunwind-dev libsdl2-dev
 ```
 
 ```sh
-cargo run
+cargo build --release
 ```
 
-## macOS
-
-```sh
-brew install cmake pkg-config
-cargo build --release --no-default-features --features webgl,sdl2-bundled,sdl2-static-link
-```
-
-## Windows
-
-SDL2 is built from source and linked statically, so no SDL2 DLL is needed.
-
-```sh
-cargo build --release --no-default-features --features webgl,sdl2-bundled,sdl2-static-link
-```
-
-If CMake 4.x rejects the bundled SDL2, set `CMAKE_POLICY_VERSION_MINIMUM=3.5`.
-
-## Cargo features
-
-> **pizero2w fork:** the default feature set is `["software"]`, not upstream's
-> `["webgl"]` — this tree targets a Raspberry Pi Zero 2 W with no GPU path
-> worth spending RAM on. A plain `cargo build --release`/`cargo run` is now a
-> CPU-only build; pass `--no-default-features --features webgl` for GPU
-> rendering on hardware that has one (every command on this page that still
-> wants GPU accel — macOS, Windows, a desktop Linux GL build — does so
-> explicitly, above and in CI).
-
-| Feature | Default | What it does |
-| --- | --- | --- |
-| `software` | **on** | CPU rendering: swgl rasterizes the page, SDL's own renderer paints the chrome |
-| `webgl` | off | WebGL over SDL's EGL display; also required for any GPU-accelerated rendering at all |
-| `sdl2-bundled` | off | Build SDL2 from source |
-| `sdl2-static-link` | off | Link SDL2 statically |
-
-To get the pre-fork behavior back (GPU rendering, no swgl/CPU fallback compiled in):
-
-```sh
-cargo build --release --no-default-features --features webgl
-```
-
-CI release builds add fat LTO, `codegen-units = 1`, `opt-level = "z"` and
-`panic = "abort"` — on this fork these are pinned directly in `Cargo.toml`
-(not CI-only), so a local `cargo build --release` now matches what ships. This
-trades local iteration speed for every build being the real thing; see the
-comments in `Cargo.toml`'s `[profile.release]` if that tradeoff needs
+CI release builds add fat LTO, `codegen-units = 1`, `opt-level = "z"` and `panic = "abort"`
+— pinned directly in `Cargo.toml` (not CI-only), so a local `cargo build --release` now
+matches what ships. This trades local iteration speed for every build being the real
+thing; see the comments in `Cargo.toml`'s `[profile.release]` if that tradeoff needs
 revisiting for day-to-day development.
-
-## Android
-
-Needs NDK r27c (`27.2.12479018`, as pinned in `.github/workflows/build-android.yml`), JDK 17,
-Android SDK platform and build-tools 34, and [`cargo-ndk`](https://github.com/bbqsrc/cargo-ndk).
-The APK targets API level 29.
-
-```sh
-rustup target add aarch64-linux-android
-cargo install cargo-ndk --locked
-sdkmanager --install "ndk;27.2.12479018" "platforms;android-34" "build-tools;34.0.0"
-export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
-
-./android/scripts/build.sh           # debug APK: android/app/build/outputs/apk/debug/
-./android/scripts/build.sh release   # release APK
-adb install -r android/app/build/outputs/apk/release/app-release.apk
-```
-
-`build.sh` builds `libSDL2.so` on its first run, cross-compiles the Rust library and
-assembles the APK. The first build compiles SpiderMonkey (30 to 60 minutes). Debug and
-release share one signing key, so `-r` updates in place. Test on a device with a release
-build: a debug build has been seen to stop before the first page load.
-
-Android Studio can run and debug the `android/` project once `build.sh` has put the `.so`
-files in `app/src/main/jniLibs/`; it does not build the Rust part.
-
-What `build.sh` does, by hand:
-
-```sh
-cargo fetch && bash android/scripts/sync-sdl.sh    # SDL glue + libSDL2.so
-tc="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"   # or darwin-x86_64
-export ANDROID_NDK="$ANDROID_NDK_HOME" ANDROID_NDK_VERSION="$(basename "$ANDROID_NDK_HOME")"
-export ANDROID_VERSION=29 ANDROID_TOOLCHAIN_DIR="$tc"
-export ANDROID_CLANG="$tc/bin/aarch64-linux-android29-clang"
-# bindgen needs the NDK's libclang, which r27 keeps under musl/lib.
-export LIBCLANG_PATH="$tc/musl/lib" BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$tc/sysroot"
-# rustc still links -lgcc, which the NDK dropped; libunwind stands in.
-mkdir -p target/ndk-libgcc-stub && echo 'INPUT(-lunwind)' > target/ndk-libgcc-stub/libgcc.a
-cargo ndk -t arm64-v8a -P 29 -o android/app/src/main/jniLibs build --release
-cd android && ./gradlew assembleRelease
-```
-
-[`ANDROID_PORT.md`](ANDROID_PORT.md) covers how the port is put together.
 
 ## Tests
 
@@ -118,16 +37,12 @@ The page runner needs a release binary, `Xvfb`, `xdotool` and `ffmpeg`. It loads
 from `tests/serve.py` and checks the results the page reports. The `Check` workflow runs
 both.
 
-## Handhelds
+## The device build
 
-CI builds these; the scripts build locally in the same containers.
-
-```sh
-tools/arm64/build.sh                 # aarch64 per-core binaries -> dist/arm64/
-tools/arm64/package-portmaster.sh    # builds, then dist/portmaster{,.zip}
-tools/armhf/build.sh                 # Miyoo Mini (armv7) binary
-```
-
-Details: [`tools/arm64/README.md`](../tools/arm64/README.md),
-[`tools/armhf/README.md`](../tools/armhf/README.md),
-[Handhelds](HANDHELD_PORT.md), [Rendering](RENDERING.md).
+CI (`build-pizero2w.yml`) cross-compiles on a native `aarch64` runner with
+`RUSTFLAGS="-C target-cpu=cortex-a53"` (the board's exact CPU, a choice the universal
+handheld builds upstream kept — portable across several ARM cores — never had to make
+here, since this fork has only the one board). It then packages the binary with
+`packaging/pizero2w/`'s config, bindings, fonts and launch script. See
+[`packaging/pizero2w/README.md`](../packaging/pizero2w/README.md) for what ships beside
+the binary and how the console's own software store installs it.

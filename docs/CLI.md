@@ -37,8 +37,6 @@ option prints the usage and exits with status 64.
 | `RETSURF_LOG_STYLE` | `always` | Log colors: `always`, `auto` or `never` |
 | `RETSURF_LOG_FILE` | — | Write the log to this file |
 | `RETSURF_PANIC_FILE` | `retsurf-panic.log` | Where a panic's message and backtrace go |
-| `RETSURF_GLES` | `1` | `0` uses desktop OpenGL (debugging) |
-| `RETSURF_SOFTWARE` | `0` | `1` forces CPU rendering |
 | `RETSURF_SCALE` | — | UI zoom in place of the fit to the screen; `[interface] scale` still applies |
 | `RETSURF_MAX_FPS` | — | Overrides `[performance] max_fps` |
 | `RETSURF_KEYMAP` | auto | `miyoo` reads the pad from the keys that firmware sends, `desktop` never does |
@@ -51,5 +49,3 @@ option prints the usage and exits with status 64.
 | `RETSURF_ROUNDING` | `0` in software | `1` restores rounded corners on the software renderer |
 | `RETSURF_FEATHERING` | by renderer | `0`/`1` overrides egui's edge smoothing |
 | `SDL_VIDEODRIVER` | auto | SDL video backend; set to `wayland` on a Wayland desktop |
-
-retsurf sets `SURFMAN_FORCE_GLES=1` itself when GLES is on.

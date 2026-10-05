@@ -34,27 +34,26 @@ jobs:
       # One profile for all three steps: a profile switch would compile Servo a
       # second time. Release without the LTO knobs the Nightly build sets.
       #
-      # `--no-default-features --features webgl`: the PIZERO2W FORK's
-      # Cargo.toml default flipped to `["software"]` (CPU-only, for a board
-      # with no GPU worth spending RAM on), but this workflow checks the
-      # shared code every other platform in this repo still ships on GPU
-      # hardware — and the Pages step below specifically probes the WebGL
-      # path. Pin the pre-flip default explicitly rather than letting Check
-      # silently start validating a different configuration than Linux/ARM/
-      # Android/macOS/Windows build.
+      # Plain defaults: `["software"]` is now this fork's only build (the GL/
+      # WebGL backend `--features webgl` used to pick was removed once the
+      # pizero2w-only scope made it dead weight), so Check validates the exact
+      # thing `build-pizero2w.yml` ships rather than a GPU path this repo can no
+      # longer produce.
       - name: Build
-        run: cargo build --release --no-default-features --features webgl
+        run: cargo build --release
 
       - name: Test
-        run: cargo test --release --no-default-features --features webgl
+        run: cargo test --release
 
       # Only workspace crates go through clippy-driver (RUSTC_WORKSPACE_WRAPPER),
       # so the dependencies stay as the build left them.
       - name: Clippy
-        run: cargo clippy --release --all-targets --no-default-features --features webgl -- -D warnings
+        run: cargo clippy --release --all-targets -- -D warnings
 
-      # The only step that runs a browser: layout, media, WebGL, input and the
-      # download triggers, through the pages' own beacons. Software GL: no GPU here.
+      # The only step that runs a browser: layout, media, input and the download
+      # triggers, through the pages' own beacons. No WebGL probe here — this
+      # build has no WebGL path at all (see `tests/run_pages.py`'s history for
+      # the `webgl`/`webgl2-features` cases this fork dropped alongside it).
       - name: Pages
         run: |
           sudo apt-get install -y --no-install-recommends \

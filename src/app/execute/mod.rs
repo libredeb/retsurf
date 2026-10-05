@@ -388,6 +388,7 @@ impl App {
         self.ui.set_page_icons(self.config.interface.page_icons);
         self.ui.set_home_style(self.config.interface.home_style);
         self.ui.set_osk_style(self.config.osk.style);
+        self.ui.set_osk_full_width(self.config.osk.full_width);
         self.ui.set_pad_layout(self.config.controls.pad_layout);
         self.ui.menu.history_mut().set_config(&self.config.history);
         self.ui.set_memory_debug(

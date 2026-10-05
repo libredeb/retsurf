@@ -16,3 +16,15 @@
 "select+b" = "zoom_out"
 "l1+r1" = "zoom_reset"
 "r1+l1" = "zoom_reset"
+
+# This device's own launcher is the parent process launch.sh execs retsurf
+# under (see launch.sh's trailing `wait`): there is no window-manager close
+# button to fall back on, so the app needs its own explicit way out back to
+# the grid. `quit` (src/event/bindings.rs) exists exactly for this — it is
+# unbound upstream on purpose — and triggers retsurf's normal clean-exit path
+# (session save, Servo shutdown, `process::exit(0)`), which launch.sh's
+# `wait "$app"` picks up immediately, so the chain back to the launcher needs
+# no extra plumbing. Both orders bound, like l1+r1 above, since a two-button
+# press is not ordered.
+"start+select" = "quit"
+"select+start" = "quit"

@@ -11,12 +11,6 @@
 # needs no device-specific scaling override to look right at this size.
 width = 720
 height = 720
-# No GPU path is compiled into this fork by default any more (Cargo.toml's
-# `default = ["software"]"); this just makes the device's own choice explicit
-# so a `webgl`-featured debug build doesn't silently try EGL on a board with
-# no compositor to hand it a surface.
-use_gles = false
-software_render = true
 # This board runs labwc (a real Wayland compositor), not a bare KMS/DRM kiosk
 # boot — a window manager capable of resizing this window genuinely exists
 # here. `lock_size` is what keeps the layout viewport the pages see
@@ -40,6 +34,24 @@ max_tabs = 1
 # exists. Tune live in Settings > Controls > "Cursor precision" if 2.0 isn't
 # the right feel on the actual nav disc.
 cursor_curve = 2.0
+# Hint mode's combo badges exist to be pressed via a direct D-pad-button
+# letter select (src/app/router.rs's `DpadPress`) — gone now that launch.sh's
+# SDL_GAMECONTROLLERCONFIG no longer synthesizes D-pad buttons off this
+# board's single nav-disc axes (see its own comment: that synthesis is what
+# was saturating the cursor's aim vector and defeating cursor_curve above).
+# Off here so hint mode falls back to plain spatial hopping via the stick,
+# which still works exactly as before, instead of showing badges with a
+# letter nothing on this board can press.
+hint_badges = false
+
+[osk]
+# The grid keyboard's own layout (src/ui/osk/mod.rs's ROW_SPAN) is a design
+# sized for a 640-wide chrome, narrower than this 720px square panel even at
+# zoom 1.0 — this stretches every key, gap and badge uniformly to fill the
+# panel instead, so the keys are bigger and easier to land on with the nav
+# disc. Off by default everywhere else, where the design already matches the
+# window it's built for.
+full_width = true
 
 [update]
 # src/update's install-kind detection has no case for this board yet: any
@@ -78,8 +90,8 @@ worker_pool_max = 0
 http_disk_cache_mb = 0
 # Pinned on purpose, not left at the engine's own default (also 30): the
 # HyperPixel panel's spec sheet advertises 60fps, which reads as "this should
-# be 60" — but every frame here is a full-panel CPU recomposite
-# (`[display] software_render`, no GPU compositor pass to amortize it), so
+# be 60" — but every frame here is a full-panel CPU recomposite (this fork's
+# only rendering path, no GPU compositor pass to amortize it), so
 # doubling to 60 doubles that cost for a kiosk-style browser UI, not a twitch
 # game, on a 1600 mAh battery. Raise only after measuring battery life and
 # frame cost on an actual unit, not from the spec sheet alone.

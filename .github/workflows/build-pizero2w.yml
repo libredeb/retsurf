@@ -2,10 +2,10 @@ name: Pi Zero 2 W
 
 # The GamerCard handheld: Raspberry Pi Zero 2 W (quad Cortex-A53, 512 MB),
 # Debian 12 (bookworm) ARM64, no GPU worth spending RAM on — this fork's
-# `default = ["software"]` (Cargo.toml) is exactly what this target wants, so
-# unlike every *other* Linux build in this repo, nothing here fights that
-# default back to `webgl`. See packaging/pizero2w/README.md for the device
-# profile this binary ships next to.
+# `software` rendering (Cargo.toml) is exactly what this target wants, and
+# this fork's only one, so a plain `cargo build --release` below needs no
+# feature override. See packaging/pizero2w/README.md for the device profile
+# this binary ships next to.
 on:
   workflow_dispatch:
   workflow_call:
@@ -55,12 +55,11 @@ jobs:
 
       - uses: ./.github/actions/linux-build-env
 
-      # The board is a fixed, known quad Cortex-A53 — unlike the PortMaster
-      # matrix, which must stay portable across A35/A53/A55, this build can
-      # safely tell rustc that (see packaging/pizero2w/README.md's own build
-      # section for the same flag used on-device). No `--features` override:
-      # the fork's own default (`["software"]`) is already the CPU-only,
-      # no-EGL build this board wants.
+      # The board is a fixed, known quad Cortex-A53, so this build can safely
+      # tell rustc that (see packaging/pizero2w/README.md's own build section
+      # for the same flag used on-device). No `--features` override: the
+      # fork's only rendering path (software) is already the CPU-only, no-EGL
+      # build this board wants.
       - name: Build
         env:
           RUSTFLAGS: -C target-cpu=cortex-a53
@@ -95,6 +94,7 @@ jobs:
           cp packaging/pizero2w/config.toml "$pkg/"
           cp packaging/pizero2w/bindings.toml "$pkg/"
           cp packaging/pizero2w/fonts.conf.in "$pkg/"
+          cp packaging/pizero2w/retsurf.desktop "$pkg/"
           cp packaging/pizero2w/launch.sh "$pkg/" && chmod +x "$pkg/launch.sh"
           ls -la "$pkg"
 
@@ -111,11 +111,11 @@ jobs:
           set -eux
           cd dist/retsurf-pizero2w && zip -r ../../retsurf-pizero2w.zip .
           cd ../..
-          # Not consulted by the in-app updater yet (`Kind::Single` matches any
-          # linux/aarch64 install onto `retsurf-linux-aarch64.zip` — the
-          # GPU-featured universal build, wrong for this board; see the
-          # README's update-safety note). Shipped anyway for manual
-          # verification, same as every other platform's sidecar.
+          # Not consulted by retsurf's own in-app updater at all: this board's
+          # updates come from the console's own software store, which installs
+          # a `.deb` it builds separately — see packaging/pizero2w/README.md's
+          # "Updates" section. Shipped anyway for manual verification and as a
+          # build artifact the store's packaging step can pull from.
           sha256sum retsurf-pizero2w.zip > retsurf-pizero2w.zip.sha256
 
       - name: Upload to GitHub Release

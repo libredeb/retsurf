@@ -17,9 +17,13 @@
   <a href="https://github.com/mxmgorin/retsurf/discussions">Discussions</a>
 </p>
 
-retsurf is a web browser written in Rust and built with [Servo](https://servo.org/) and [SDL2](https://www.libsdl.org/). It aims to provide a full-featured web experience while staying lightweight and portable. It targets handheld devices while also working on Android and desktops. It has gamepad- and keyboard-friendly controls for browsing and gaming-specific features like remappable input.
+retsurf is a web browser written in Rust and built with [Servo](https://servo.org/) and [SDL2](https://www.libsdl.org/). It aims to provide a full-featured web experience while staying lightweight and portable. It has gamepad- and keyboard-friendly controls for browsing and gaming-specific features like remappable input.
 
-**[Install](#install)** on a PortMaster handheld, a Miyoo Mini, Android, Linux, Windows, or macOS.
+> **This fork.** This tree targets exactly one board — the Raspberry Pi Zero 2 W GamerCard
+> handheld — and has dropped every other platform the upstream project supports (desktop
+> Linux/macOS/Windows, Android, PortMaster handhelds, the Miyoo Mini). See
+> [`packaging/pizero2w/README.md`](packaging/pizero2w/README.md) for the device build; the
+> [upstream project](https://github.com/mxmgorin/retsurf) is where the other platforms live.
 
 > **Work in progress.** Early development — expect bugs.
 
@@ -75,33 +79,22 @@ retsurf is a web browser written in Rust and built with [Servo](https://servo.or
 - **No display server required**<br>
   SDL2 draws through whatever video backend the firmware ships. X11 and Wayland are optional, not required.
 
-- **Hardware or software rendering**<br>
-  A custom Servo rendering backend uses OpenGL ES for GPU-accelerated rendering on supported devices, with a CPU-based software renderer for devices without a GPU.
+- **Software rendering**<br>
+  swgl (WebRender's CPU rasterizer) draws the page, SDL's own renderer draws the chrome —
+  this fork's only rendering path, chosen for a board with no GPU path worth spending RAM
+  on.
 
 ## Install
 
-Download the latest release for your platform below. All builds are available on
-[Releases](https://github.com/mxmgorin/retsurf/releases). Nightly builds from `main` use
-the same file names under the rolling
-[`nightly`](https://github.com/mxmgorin/retsurf/releases/tag/nightly) tag.
-
-| Device | Package | Where it goes |
-| --- | --- | --- |
-| [PortMaster handhelds](https://portmaster.games/supported-devices.html) (ArkOS, dArkOS, EmuELEC, Knulli, muOS, ROCKNIX) | [`retsurf-portmaster.zip`](https://github.com/mxmgorin/retsurf/releases/latest/download/retsurf-portmaster.zip) | ports folder, e.g. `/roms/ports/` |
-| Miyoo Mini Flip and Plus on [OnionOS](https://onionui.github.io/) | [`retsurf-onionos.zip`](https://github.com/mxmgorin/retsurf/releases/latest/download/retsurf-onionos.zip) | `App/Retsurf/` on the SD card |
-| Miyoo Mini Flip and Plus on [Allium](https://github.com/goweiwen/Allium) | [`retsurf-allium.zip`](https://github.com/mxmgorin/retsurf/releases/latest/download/retsurf-allium.zip) | `Apps/Retsurf.pak/` on the SD card |
-| Android | [`retsurf-android-arm64.apk`](https://github.com/mxmgorin/retsurf/releases/latest/download/retsurf-android-arm64.apk) | sideload it |
-| Linux | [`retsurf-linux-x86_64.zip`](https://github.com/mxmgorin/retsurf/releases/latest/download/retsurf-linux-x86_64.zip), [`retsurf-linux-aarch64.zip`](https://github.com/mxmgorin/retsurf/releases/latest/download/retsurf-linux-aarch64.zip) | unpack and run |
-| Windows | [`retsurf-windows-x86_64.zip`](https://github.com/mxmgorin/retsurf/releases/latest/download/retsurf-windows-x86_64.zip) | unpack and run |
-| macOS | [`retsurf-macos-aarch64.dmg`](https://github.com/mxmgorin/retsurf/releases/latest/download/retsurf-macos-aarch64.dmg) | open it and run `Retsurf.app` |
-
-On both Miyoo firmwares the app shows up in the Apps menu, and **MENU quits** it.
+This fork ships as a `.deb` built by `build-pizero2w.yml`, installed through the
+GamerCard console's own software store — retsurf never updates itself on this board. See
+[`packaging/pizero2w/README.md`](packaging/pizero2w/README.md) for the device build and
+what ships beside the binary.
 
 ## Building
 
-`cargo run`, once Servo's build dependencies are installed. See **[Building from
-source](docs/BUILDING.md)** for the prerequisites on each OS, the Cargo features,
-Android, and the handheld cross-builds.
+`cargo build --release`, once Servo's build dependencies are installed. See **[Building
+from source](docs/BUILDING.md)** for the prerequisites and the device build.
 
 ## Configuration
 

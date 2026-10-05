@@ -174,17 +174,6 @@ def scroll_down(driver, _beacons):
     driver.wheel_down()
 
 
-# What the engine passes today. A check that drops out of this set is a
-# regression; one that joins it is not, so new passes need no edit here.
-WEBGL2_EXPECTED = [
-    "webgl2", "vao", "instancing", "ubo", "sampler", "query", "sync",
-    "transformfeedback", "getbufsubdata", "vertex", "fragment", "link",
-    "tex3d", "texarray", "storage", "depth", "float", "potmip",
-    "mrt", "multisample", "blit", "invalidate",
-    "gamepad", "fullscreen", "offscreen", "worker", "wasm", "wasmstream",
-    "indexeddb", "localstorage", "audiocontext", "fetchrange", "performancenow",
-    "visibility", "plain", "buffer", "open", "write",
-]
 # Declarative shadow DOM through DOMParser and createContextualFragment is the
 # gap this page was written for; everything else passes.
 SHREDDIT_EXPECTED = [
@@ -268,17 +257,6 @@ def keys_verdict(beacons):
         return f"never reached the page: {', '.join(sorted(missing))}"
     if not any(b.get("edge") == "up" for b in beacons):
         return "no key release reached the page"
-    return None
-
-
-def webgl_verdict(beacons):
-    fields = merged(beacons)
-    if fields.get("link") != "true":
-        return f"the shader program did not link: {fields}"
-    if fields.get("rgba") != fields.get("expect"):
-        return f"read back {fields.get('rgba')}, expected {fields.get('expect')}"
-    if fields.get("error") != "0":
-        return f"GL error {fields.get('error')} after the draw"
     return None
 
 
@@ -371,24 +349,6 @@ CASES = [
         select=lambda b: "stage" in b,
         enough=lambda bs: any(b.get("stage") == "playing" for b in bs),
         verdict=media_verdict,
-        timeout=90,
-    ),
-    # A pixel read back from a WebGL draw: the composite path is not covered, the
-    # context and the draw are.
-    Case(
-        name="webgl",
-        url="webgl.html",
-        select=page_is("webgl"),
-        enough=lambda bs: any("rgba" in b for b in bs),
-        verdict=webgl_verdict,
-        timeout=60,
-    ),
-    Case(
-        name="webgl2-features",
-        url="webgl2-features.html",
-        select=page_is("webgl2"),
-        enough=lambda bs: any("visibility" in b for b in bs),
-        verdict=lambda bs: regressions(bs, WEBGL2_EXPECTED),
         timeout=90,
     ),
     Case(

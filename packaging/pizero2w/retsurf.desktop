@@ -1,0 +1,31 @@
+# Desktop entry for the GamerCard's own grid launcher — not a desktop menu
+# like resources/retsurf.desktop, which this one otherwise mirrors. The one
+# thing that matters to the custom launcher is `Categories=Game;` below: that
+# is what gets retsurf picked up as a tile in the game grid, same as every
+# other app on the console.
+#
+# Exec points at launch.sh, not the bare binary: that script does this
+# device's first-run config/bindings install, the verified
+# SDL_GAMECONTROLLERCONFIG mapping and the Wayland/PipeWire env hints bare
+# `retsurf` has none of (see launch.sh's own header). Replace the path below
+# with wherever this packaging folder actually lands on the image.
+#
+# No MimeType and no `%u`: this is a kiosk entry the grid launcher starts
+# with no arguments, not a file-manager association.
+#
+# Install (adjust the path to whatever your launcher scans):
+#   cp packaging/pizero2w/retsurf.desktop ~/.local/share/applications/
+
+[Desktop Entry]
+Version=1.0
+Name=retsurf
+GenericName=Web Browser
+Comment=Lightweight gamepad-first web browser powered by Servo
+# Replace with the path this packaging folder is installed to.
+Exec=/opt/retsurf/launch.sh
+Icon=retsurf
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=Game;
+Keywords=web;browser;internet;servo;game;
