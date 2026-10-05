@@ -434,8 +434,8 @@ impl AppBrowser {
         local_site: Option<LocalSite>,
         config: &AppConfig,
     ) -> Result<Self, String> {
-        // Servo renders into swgl's own framebuffer (see `SwglRenderingContext`);
-        // the window backend blits it into the composed frame.
+        // Servo renders into an FBO in SDL2's shared GL context
+        // (see `SdlRenderingContext`); egui composites that FBO's texture.
         let servo = servo::ServoBuilder::default()
             .opts(engine::build_opts(&config.browser))
             .preferences(engine::build_preferences(

@@ -79,10 +79,12 @@ retsurf is a web browser written in Rust and built with [Servo](https://servo.or
 - **No display server required**<br>
   SDL2 draws through whatever video backend the firmware ships. X11 and Wayland are optional, not required.
 
-- **Software rendering**<br>
-  swgl (WebRender's CPU rasterizer) draws the page, SDL's own renderer draws the chrome —
-  this fork's only rendering path, chosen for a board with no GPU path worth spending RAM
-  on.
+- **GL rendering, software-driven**<br>
+  WebGL and the chrome both run through a GL context, but driven by Mesa's `llvmpipe`
+  software rasterizer (`LIBGL_ALWAYS_SOFTWARE=1`) rather than this board's own VideoCore
+  IV GPU driver, whose GLES 2.x is below WebRender/egui's GLES 3.0 floor. See
+  [Rendering](docs/RENDERING.md) for why this fork doesn't use WebRender's own swgl
+  software path instead.
 
 ## Install
 

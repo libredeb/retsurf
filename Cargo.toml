@@ -8,20 +8,43 @@ license = "GPL-3.0"
 name = "retsurf"
 crate-type = ["lib"]
 
+[features]
 # PIZERO2W FORK: this fork targets exactly one board (Raspberry Pi Zero 2 W +
-# HyperPixel 4.0 Square) with no GPU-accelerated EGL/GLES path worth carrying —
-# the VideoCore IV's shared-memory GL path costs unified RAM this device has
-# none of spare, on a panel too small for the difference to be visible. Upstream
-# offered a GL/WebGL chrome backend (behind a `webgl` feature) alongside this
-# software one (`swgl` rasterizes the page, SDL's own renderer paints the
-# chrome); both the feature and the GL backend it gated (`servo/webgl`, the
-# EGL/surfman composite path, `android/` — Mali/Adreno/PowerVR all need real
-# GLES, which this fork no longer carries at all) were removed once the
-# pizero2w-only scope made them dead weight, rather than kept as a toggle
-# nothing here ever flips. `cargo build --release` is now always this one,
-# single rendering path, even though swgl compiles every WebRender shader as
-# C++ — the one GPU-bearing target upstream carried the GL path for is not this
-# fork's target.
+# HyperPixel 4.0 Square). An earlier version of this fork dropped the `webgl`
+# feature and the GL chrome backend entirely (`src/platform/window/gl.rs`,
+# `src/platform/render/sdl.rs`/`webgl.rs`, `android/`) to avoid spending RAM
+# on the VideoCore IV's GPU path — but on-device testing found two problems
+# with the swgl-only software path that replaced it: (1) WebGL is simply
+# unavailable (`SwglRenderingContext` has no EGL/surfman connection at all to
+# hand a WebGL surface to), breaking any page with a WebGL-dependent hero/
+# canvas element; (2) swgl's own blend-mode dispatch (`hash_blend_key` in its
+# vendored `gl.cc`) only implements a curated table of GL blend func/equation
+# combinations — a page that drives WebRender into a combination outside that
+# table (seen in practice from ordinary page content, not just WebGL) hits an
+# `assert(false)` and aborts the *entire process*, not just the page. Real GL,
+# even a CPU-emulated one, implements the full blend spec and has neither
+# problem. The fix kept here is **not** to use the VideoCore IV's own GPU
+# driver (GLES 2.x only, confirmed too weak for WebRender/egui's GLES 3.0
+# floor) but Mesa's `llvmpipe` software rasterizer instead, forced on via
+# `LIBGL_ALWAYS_SOFTWARE=1` (`packaging/pizero2w/launch.sh`) — a full,
+# spec-compliant (if CPU-bound) GL/EGL implementation, unlike swgl's
+# WebRender-specific subset. `default = ["webgl"]` below restores upstream's
+# own default; `software` (swgl) stays available, opt-in, for anyone building
+# this tree for a true GPU-less device (the Miyoo Mini) that has no Mesa
+# `llvmpipe` fallback to lean on.
+default = ["webgl"]
+# WebGL through a surfman connection over SDL's own EGL display. On by default
+# on this fork now (see above) — without it, `servo/webgl` is never compiled
+# in. WebGPU is a feature of its own upstream and is not enabled here.
+webgl = ["servo/webgl"]
+# Software rendering end to end, for devices with no GPU at all (Miyoo Mini):
+# swgl rasterizes the page, SDL's own renderer paints the chrome. Opt-in on
+# this fork (see above) rather than default — kept only as a last-resort
+# fallback `build_backend` reaches for when GL itself fails to come up at all,
+# not as this board's primary path.
+software = ["dep:swgl", "egui-sdl2/canvas-backend"]
+sdl2-bundled = ["sdl2/bundled"]
+sdl2-static-link = ["sdl2/static-link"]
 
 # This fork targets exactly one board (the Raspberry Pi Zero 2 W GamerCard;
 # every other platform — desktop Linux/macOS/Windows, Android, the PortMaster
@@ -61,8 +84,8 @@ debug-assertions = false
 overflow-checks = false
 
 # The rasterizers stay at -O3 even under a `z`-everywhere release profile: they
-# are the frame, and scalar swgl — the only path this fork rasterizes through —
-# is not something to make slower in exchange for a smaller .text. Unchanged
+# are the frame, and scalar swgl is not something to make slower in exchange
+# for a smaller .text when the `software` feature is the one in use. Unchanged
 # from upstream (see tools/armhf/build.sh), which needed the same exception for
 # the same reason on a weaker CPU.
 [profile.release.package.swgl]
@@ -81,10 +104,10 @@ sdl2 = { version = "0.38.0", default-features = false }
 gleam = "0.15"
 glow = "0.17"
 surfman = "0.14"
-# WebRender's own software rasterizer — this fork's only rendering path. Same
-# 0.70 as the `webrender` already in the graph — WR switches to its software
-# paths on the renderer name alone, so the two must be one release.
-swgl = "0.70"
+# WebRender's own software rasterizer (the `software` feature). Same 0.70 as the
+# `webrender` already in the graph — WR switches to its software paths on the
+# renderer name alone, so the two must be one release.
+swgl = { version = "0.70", optional = true }
 log = "0.4.28"
 env_logger = "0.11.8"
 # Named off the fork rather than a version plus a patch: no such version is on
@@ -132,10 +155,9 @@ keyboard-types = "0.8.1"
 # Rebindable input: the gesture machine, `bindings.toml` and the editor model. Its
 # `sdl2` feature resolves to the same sdl2 as ours, so pad and key types are one set.
 inputbind = { git = "https://github.com/mxmgorin/inputbind", rev = "e33376b103bc49ea450eec54c251dfcdb251eb8b" }
-# Draws the chrome: egui over SDL2. `canvas-backend` is the CPU half — this
-# fork's only one; `glow-backend` (the GPU half, upstream's default) went with
-# the GL chrome backend once the pizero2w-only scope made it dead weight.
-egui-sdl2 = { version = "0.12.0", default-features = false, features = ["canvas-backend"] }
+# Draws the chrome: egui over SDL2. `glow-backend` is the GPU half; the software
+# build adds `canvas-backend` through the `software` feature above.
+egui-sdl2 = { version = "0.12.0", default-features = false, features = ["glow-backend"] }
 # Every chrome icon comes from this font: `bold` because lighter weights wash out at
 # the 15px the handhelds draw, `fill` for the solid halves of on/off pairs. From the
 # fork because upstream's newest release is still on egui 0.35, and two do not mix.

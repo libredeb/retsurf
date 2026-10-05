@@ -11,6 +11,16 @@
 # needs no device-specific scaling override to look right at this size.
 width = 720
 height = 720
+# The VideoCore IV's own GPU driver only exposes GLES 2.x (below WebRender/
+# egui's GLES 3.0 floor), so this is not meant to hit real hardware here —
+# launch.sh forces `LIBGL_ALWAYS_SOFTWARE=1`, which makes Mesa serve this GLES
+# request from its `llvmpipe` CPU rasterizer instead. Explicit so a debug run
+# off this config doesn't silently pick desktop GL when launch.sh's env is
+# missing. `software_render` stays off: swgl's blend-mode dispatch aborts the
+# whole process on blend combinations outside its curated table (see
+# Cargo.toml's `[features]` comment) — Mesa's software GL has no such gap.
+use_gles = true
+software_render = false
 # This board runs labwc (a real Wayland compositor), not a bare KMS/DRM kiosk
 # boot — a window manager capable of resizing this window genuinely exists
 # here. `lock_size` is what keeps the layout viewport the pages see
@@ -28,12 +38,17 @@ max_tabs = 1
 # The nav disc aims the cursor linearly by default (speed = deflection *
 # cursor_speed, same on every device) — fine for crossing the screen, coarse
 # for stopping exactly on a small link, especially on a short-throw disc
-# instead of a long-throw thumbstick. Quadratic easing (2.0) keeps full
-# deflection at the same top speed while making a small push move the cursor
-# much more slowly, for the same reason a mouse's own pointer acceleration
-# exists. Tune live in Settings > Controls > "Cursor precision" if 2.0 isn't
-# the right feel on the actual nav disc.
-cursor_curve = 2.0
+# instead of a long-throw thumbstick. Lowered from the compiled-in default
+# (600) and live-tested on an actual unit, together with cursor_curve below.
+cursor_speed = 200
+# Cubic easing (3.0, the bounds' own ceiling) keeps full deflection at the same
+# top speed while making a small push move the cursor much more slowly, for
+# the same reason a mouse's own pointer acceleration exists — needed more here
+# than a milder curve would give, since this disc reaches a high normalized
+# deflection on a very short, fast throw. Live-tested on an actual unit
+# alongside cursor_speed above; tune further in Settings > Controls > "Cursor
+# precision" if this stops being the right feel.
+cursor_curve = 3.0
 # Hint mode's combo badges exist to be pressed via a direct D-pad-button
 # letter select (src/app/router.rs's `DpadPress`) — gone now that launch.sh's
 # SDL_GAMECONTROLLERCONFIG no longer synthesizes D-pad buttons off this
@@ -56,11 +71,12 @@ full_width = true
 [update]
 # src/update's install-kind detection has no case for this board yet: any
 # writable-directory linux/aarch64 install reads as `Kind::Single` and points
-# at `retsurf-linux-aarch64.zip` — the generic, GPU-featured (`webgl`)
-# universal build CI makes for desktop-style aarch64, not this board's own
-# CPU-only `retsurf-pizero2w.zip`. An in-place "update" would swap this
-# board's binary for one that doesn't match its Cargo features at all. Off
-# until src/update gains a pizero2w-specific Kind (a sibling-file check like
+# at `retsurf-linux-aarch64.zip` — a desktop-style aarch64 build expecting a
+# real GPU, not this board's own `retsurf-pizero2w.zip` (built with
+# `-C target-cpu=cortex-a53`, shipped with launch.sh's `LIBGL_ALWAYS_SOFTWARE`
+# and this config). An in-place "update" would swap this board's binary for
+# one that doesn't match its CPU target or its runtime environment. Off until
+# src/update gains a pizero2w-specific Kind (a sibling-file check like
 # PortMaster's own `portmaster_paths()`) pointed at the right asset — see
 # packaging/pizero2w/README.md.
 auto_check = false
@@ -90,11 +106,12 @@ worker_pool_max = 0
 http_disk_cache_mb = 0
 # Pinned on purpose, not left at the engine's own default (also 30): the
 # HyperPixel panel's spec sheet advertises 60fps, which reads as "this should
-# be 60" — but every frame here is a full-panel CPU recomposite (this fork's
-# only rendering path, no GPU compositor pass to amortize it), so
-# doubling to 60 doubles that cost for a kiosk-style browser UI, not a twitch
-# game, on a 1600 mAh battery. Raise only after measuring battery life and
-# frame cost on an actual unit, not from the spec sheet alone.
+# be 60" — but Mesa's `llvmpipe` software rasterizer (`LIBGL_ALWAYS_SOFTWARE`
+# in launch.sh) still recomposites every frame on the CPU, with no real GPU
+# underneath to amortize it, so doubling to 60 doubles that cost for a
+# kiosk-style browser UI, not a twitch game, on a 1600 mAh battery. Raise only
+# after measuring battery life and frame cost on an actual unit, not from the
+# spec sheet alone.
 max_fps = 30
 
 [data_saving]

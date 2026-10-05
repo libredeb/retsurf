@@ -6,8 +6,12 @@ use servo::RenderingContext;
 use std::rc::Rc;
 use std::time::Duration;
 
+mod gl;
+#[cfg(feature = "software")]
 mod software;
 
+use self::gl::GlBackend;
+#[cfg(feature = "software")]
 use self::software::SoftwareBackend;
 
 /// Per-step cost of a software frame (`[debug] frame_timing`).
@@ -37,6 +41,9 @@ impl CompositeTiming {
         self.present += other.present;
     }
 }
+
+/// Stands in where the driver reports no refresh rate: every panel here is 60 Hz.
+const ASSUMED_PANEL_INTERVAL: Duration = Duration::from_micros(16_667);
 
 /// What every renderer bundle offers the window — dispatch lives here, so the
 /// rest of the app never spells a backend or a `cfg` again.
@@ -257,19 +264,45 @@ fn apply_feathering(ctx: &egui::Context, software: bool) {
     log::info!("egui feathering: {on}");
 }
 
-/// Software end to end: this fork's one remaining target (the Pi Zero 2 W) has
-/// no GPU path worth carrying. See `Cargo.toml` for the GL backend this used to
-/// also offer, with a runtime fallback to here — removed once the pizero2w-only
-/// scope made it dead weight.
+/// GL unless the config asks for software; a GL failure falls back, so a device
+/// with no driver at all (the Miyoo Mini) lands there without config. On
+/// pizero2w, GL means `servo/webgl` running atop Mesa's software rasterizer
+/// (`LIBGL_ALWAYS_SOFTWARE=1` in `packaging/pizero2w/launch.sh`), chosen over
+/// swgl because swgl's blend-mode dispatch table (`hash_blend_key` in its
+/// vendored `gl.cc`) is incomplete and aborts the whole process on a blend
+/// combination it does not recognize — a real GL implementation, even a
+/// CPU-emulated one, implements the full spec instead of a curated subset.
+#[cfg(feature = "software")]
 fn build_backend(
     video: &VideoSubsystem,
     config: &DisplayConfig,
     max_fps: u32,
     ctx_init: fn(&egui::Context),
 ) -> Result<Box<dyn WindowBackend>, String> {
-    Ok(Box::new(SoftwareBackend::new(
-        video, config, max_fps, ctx_init,
-    )?))
+    if config.software_render {
+        return Ok(Box::new(SoftwareBackend::new(
+            video, config, max_fps, ctx_init,
+        )?));
+    }
+    match GlBackend::new(video, config, ctx_init) {
+        Ok(backend) => Ok(Box::new(backend)),
+        Err(e) => {
+            log::warn!("GL unavailable ({e}); falling back to software rendering");
+            Ok(Box::new(SoftwareBackend::new(
+                video, config, max_fps, ctx_init,
+            )?))
+        }
+    }
+}
+
+#[cfg(not(feature = "software"))]
+fn build_backend(
+    video: &VideoSubsystem,
+    config: &DisplayConfig,
+    _max_fps: u32,
+    ctx_init: fn(&egui::Context),
+) -> Result<Box<dyn WindowBackend>, String> {
+    Ok(Box::new(GlBackend::new(video, config, ctx_init)?))
 }
 
 fn build_window(

@@ -25,6 +25,18 @@ export RETSURF_DOWNLOAD_DIR="$gamedir/downloads"
 export RETSURF_PANIC_FILE="$gamedir/retsurf-panic.log"
 #export RETSURF_LOG_LEVEL=debug
 
+# This board's VideoCore IV GPU only exposes GLES 2.x through its own driver —
+# below WebRender/egui's GLES 3.0 floor — so retsurf's `webgl` build (the
+# default; see Cargo.toml's `[features]` comment) is not meant to drive the
+# real GPU here at all. LIBGL_ALWAYS_SOFTWARE forces Mesa's own `llvmpipe` CPU
+# rasterizer underneath instead, giving a full, spec-compliant GL/EGL context
+# with no real GPU involved — WebGL and every GL blend mode a page can ask for
+# work, just CPU-bound. This is deliberately NOT retsurf's own
+# `RETSURF_SOFTWARE=1` (the swgl `software` feature): on-device testing found
+# swgl's blend-mode dispatch aborts the entire process on combinations outside
+# its curated table, which Mesa's full GL implementation does not hit.
+export LIBGL_ALWAYS_SOFTWARE=1
+
 # The device runs labwc (a wlroots Wayland compositor) per its own launcher,
 # so WAYLAND_DISPLAY is normally already in the environment and
 # src/platform/startup.rs picks "wayland" on its own (it only overrides

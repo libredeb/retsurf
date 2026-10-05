@@ -4,20 +4,26 @@ retsurf builds with plain `cargo`; rustup installs the Rust version pinned in
 [`rust-toolchain.toml`](../rust-toolchain.toml). Servo brings C/C++ dependencies of its
 own, so the first build is long.
 
-This fork targets exactly one board — the Raspberry Pi Zero 2 W GamerCard — so there is
-only one build, with no GPU feature to opt into: CPU-only (swgl + SDL's own renderer) end
-to end, on Debian 12 (bookworm) ARM64.
+This fork targets exactly one board — the Raspberry Pi Zero 2 W GamerCard — on Debian 12
+(bookworm) ARM64. Rendering is GL (`default = ["webgl"]`, see `Cargo.toml`'s `[features]`
+comment) atop Mesa's software rasterizer rather than this board's own GPU driver or this
+fork's swgl `software` feature — [Rendering](RENDERING.md) has the full reasoning.
+`LIBGL_ALWAYS_SOFTWARE=1` (set in `packaging/pizero2w/launch.sh`, see below for a local
+`cargo run`) is what forces Mesa's CPU path; without it a build still runs, just against
+whatever real GL driver the machine has.
 
 ## Linux
 
 ```sh
 sudo apt-get install -y build-essential clang cmake curl git gperf pkg-config python3 \
   libssl-dev libdbus-1-dev libfreetype6-dev libglib2.0-dev \
+  libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev \
   libharfbuzz-dev liblzma-dev libudev-dev libunwind-dev libsdl2-dev
 ```
 
 ```sh
 cargo build --release
+LIBGL_ALWAYS_SOFTWARE=1 cargo run    # force Mesa's CPU rasterizer, as the device does
 ```
 
 CI release builds add fat LTO, `codegen-units = 1`, `opt-level = "z"` and `panic = "abort"`
@@ -25,6 +31,15 @@ CI release builds add fat LTO, `codegen-units = 1`, `opt-level = "z"` and `panic
 matches what ships. This trades local iteration speed for every build being the real
 thing; see the comments in `Cargo.toml`'s `[profile.release]` if that tradeoff needs
 revisiting for day-to-day development.
+
+## Cargo features
+
+| Feature | Default | What it does |
+| --- | --- | --- |
+| `webgl` | **on** | GL chrome backend + WebGL, over SDL's EGL display — see [Rendering](RENDERING.md) for why this fork runs it atop Mesa's software rasterizer rather than this board's own GPU driver |
+| `software` | off | CPU rendering: swgl rasterizes the page, SDL's own renderer paints the chrome. Kept only as a last-resort fallback (`RETSURF_SOFTWARE=1`/`[display] software_render`) — see `Cargo.toml`'s `[features]` comment for the crash it can hit |
+| `sdl2-bundled` | off | Build SDL2 from source |
+| `sdl2-static-link` | off | Link SDL2 statically |
 
 ## Tests
 

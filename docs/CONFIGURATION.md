@@ -102,6 +102,8 @@ max_fps = 30               # frame cap for software rendering, 0 = none
 [display]
 width = 640                # desktop window size, remembered on exit
 height = 480
+use_gles = true            # OpenGL ES (required on handheld GPUs)
+software_render = false    # render without the GPU (see below)
 dark_last_row = false      # black last row, for panels that repeat it at the top
 lock_size = false          # skip SDL's resizable flag; for a fixed-panel board with no WM
 
@@ -159,6 +161,15 @@ thread_cpu = false         # log CPU time per thread
 
 The UI is sized to fit the screen, so it looks the same on a handheld and in a desktop
 window. `[interface] scale` makes it larger or smaller from there, and pages follow it.
+
+## Software rendering
+
+`software_render` draws everything without the GPU, for devices that have none (the Miyoo
+Mini). It needs a build with the `software` feature (off by default on this fork — see
+[Rendering](RENDERING.md)), which also switches to it on its own when the GPU cannot be
+used. Prefer `LIBGL_ALWAYS_SOFTWARE=1` (keeps the GL path, forcing Mesa's CPU rasterizer
+underneath) where any GL driver, real or emulated, is available at all — `software_render`'s
+swgl has a known blend-mode crash the GL path does not.
 
 ## Page icons
 

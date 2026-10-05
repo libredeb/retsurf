@@ -34,11 +34,11 @@ jobs:
       # One profile for all three steps: a profile switch would compile Servo a
       # second time. Release without the LTO knobs the Nightly build sets.
       #
-      # Plain defaults: `["software"]` is now this fork's only build (the GL/
-      # WebGL backend `--features webgl` used to pick was removed once the
-      # pizero2w-only scope made it dead weight), so Check validates the exact
-      # thing `build-pizero2w.yml` ships rather than a GPU path this repo can no
-      # longer produce.
+      # Plain defaults: `default = ["webgl"]` (Cargo.toml) is this fork's only
+      # build now — GL atop Mesa's software rasterizer (`LIBGL_ALWAYS_SOFTWARE`
+      # below), not swgl, after swgl's incomplete blend-mode dispatch proved it
+      # could abort the whole process on ordinary page content, not just WebGL.
+      # Check validates the exact thing `build-pizero2w.yml` ships.
       - name: Build
         run: cargo build --release
 
@@ -50,10 +50,10 @@ jobs:
       - name: Clippy
         run: cargo clippy --release --all-targets -- -D warnings
 
-      # The only step that runs a browser: layout, media, input and the download
-      # triggers, through the pages' own beacons. No WebGL probe here — this
-      # build has no WebGL path at all (see `tests/run_pages.py`'s history for
-      # the `webgl`/`webgl2-features` cases this fork dropped alongside it).
+      # The only step that runs a browser: layout, media, WebGL, input and the
+      # download triggers, through the pages' own beacons. Software GL (Mesa's
+      # llvmpipe, via LIBGL_ALWAYS_SOFTWARE in run_pages.py's own env): no GPU
+      # on this runner, same as the device uses no VideoCore IV GPU driver.
       - name: Pages
         run: |
           sudo apt-get install -y --no-install-recommends \

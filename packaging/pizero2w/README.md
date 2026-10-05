@@ -12,9 +12,12 @@ This directory is being built up in the same stages as the refactor itself:
       font bytes.
 - [x] **Stage 2 — 720x720 square compositing.** `[display]` in `config.toml`:
       fixed 720x720, CPU rendering, no window-manager resize.
-- [x] **Stage 3 — forced size-optimized/CPU-only build profile.** Lives in the
-      repo root's `Cargo.toml` (`[profile.release]`, `default = ["software"]`),
-      not here — see the project's own changelog/commit history for that stage.
+- [x] **Stage 3 — forced size-optimized build profile.** Lives in the repo
+      root's `Cargo.toml` (`[profile.release]`), not here — see the project's
+      own changelog/commit history for that stage. Rendering itself is GL
+      (`default = ["webgl"]`) atop Mesa's software rasterizer, not the
+      swgl-only `software` feature this stage first shipped with — see the
+      "GL/WebGL backend, restored" section below for why.
 - [x] **Post-stage hardening, against the real unit.** `bindings.toml`,
       `launch.sh`'s gamepad/audio/video env and opt-in swap tuning, and
       `config.toml`'s `max_fps`: everything below that only confirmed or
@@ -24,12 +27,16 @@ This directory is being built up in the same stages as the refactor itself:
 - [x] **CI**: `.github/workflows/build-pizero2w.yml` builds and packages a
       ready-to-copy `retsurf-pizero2w.zip` on every nightly/release — this
       fork's only remaining build workflow, needing no feature override of
-      its own now that `software` is this fork's only rendering path at all.
-- [x] **Platform scope and GL/WebGL removal.** This fork dropped every
-      non-pizero2w platform from the repo (see the CI section below) and then
-      the GL/WebGL chrome backend itself, Cargo feature and all, once nothing
-      left in the tree still needed it — see the "GL/WebGL backend removed
-      entirely" section below.
+      its own since `default = ["webgl"]` is already the build this board
+      wants.
+- [x] **Platform scope.** This fork dropped every non-pizero2w platform from
+      the repo — see the CI section below.
+- [x] **GL/WebGL backend, restored.** Briefly dropped entirely in favor of a
+      swgl-only software path, then brought back (still atop Mesa's software
+      rasterizer, not this board's own GPU driver) once on-device testing
+      found swgl's blend-mode dispatch could abort the whole process on
+      ordinary page content — see the "GL/WebGL backend, restored" section
+      below.
 - [x] **Grid launcher integration.** `config.toml`'s `[osk] full_width`, a
       `start+select` → `quit` chord in `bindings.toml`, and
       `retsurf.desktop`'s `Categories=Game;` — see the three sections below.
@@ -300,12 +307,14 @@ same packaged `retsurf-pizero2w.zip` as everything else here.
 `PerformanceConfig::default()` (also `30`, so behaviorally a no-op today) —
 pinned so a later edit "fixing" this to `60` to match the HyperPixel's spec
 sheet doesn't regress battery life by accident. Every frame is a full
-720x720 CPU recomposite (`src/platform/window/software.rs`, this fork's only
-rendering path), with no GPU compositor pass to amortize
-it the way labwc's own desktop compositing does — doubling the rate doubles
-that cost, for a kiosk-style browser UI rather than a twitch game, on a 1600
-mAh cell. Raise it only after measuring actual battery life and per-frame
-cost on a unit, not from the spec sheet.
+720x720 CPU recomposite regardless of which rendering path built it —
+Mesa's `llvmpipe` software rasterizer under the GL path (`LIBGL_ALWAYS_
+SOFTWARE=1` in `launch.sh`), or `src/platform/window/software.rs` on the
+opt-in `software` fallback — with no GPU compositor pass to amortize it the
+way labwc's own desktop compositing does — doubling the rate doubles that
+cost, for a kiosk-style browser UI rather than a twitch game, on a 1600 mAh
+cell. Raise it only after measuring actual battery life and per-frame cost
+on a unit, not from the spec sheet.
 
 ## Opt-in: zram/swap tuning for pages that outgrow 512 MB
 
@@ -338,16 +347,15 @@ Two more things this file assumed are now verified against the real board:
   environment (common with systemd `--user` units) —
   `src/platform/startup.rs` already auto-selects `wayland` whenever that
   variable is present and the driver is otherwise unset. This also means the
-  GPU is alive and in active use *for compositing* — software rendering
-  above is still the right call regardless (it's about not doubling GPU
-  memory pressure with an EGL/WebGL context of retsurf's own on top of what
-  labwc already uses, a RAM argument, not a "no GPU exists" one; moot anyway
-  now that this fork carries no such context at all — see the "GL/WebGL
-  backend removed entirely" section below). The `SoftwareBackend` path
-  (`src/platform/window/software.rs`) never requests `SDL_WINDOW_OPENGL` on
-  its window in the first place (`build_window(video, config, false)`), so
-  it cannot pick a GL-based SDL renderer even by accident — confirmed zero
-  GL/EGL touch under labwc too.
+  real GPU is alive and in active use *for compositing*, by labwc — but
+  retsurf's own GL context never touches it: `LIBGL_ALWAYS_SOFTWARE=1`
+  (`launch.sh`) makes Mesa answer every GL/EGL call retsurf makes from its
+  `llvmpipe` CPU rasterizer instead of the VideoCore IV driver labwc uses, so
+  there is no second EGL/WebGL context competing with the compositor for the
+  GPU's own carve-out — a RAM/driver-contention argument that software
+  rendering would also have avoided, just by never asking for a GL context at
+  all. See the "GL/WebGL backend, restored" section below for why GL-atop-
+  Mesa-software is the path this board actually ships now.
 - **Audio**: PipeWire. `launch.sh` now exports `SDL_AUDIODRIVER=pipewire`
   (Debian 12's SDL2 2.26 has a native backend for it).
 
@@ -371,13 +379,13 @@ matrices) behind `nightly.yml`. All of that — `build-android.yml`,
 `build-macos.yml`, `build-windows.yml`, and the now-unused
 `.github/actions/arm-build-env` composite action they shared — has been
 **deleted**: this fork targets the Raspberry Pi Zero 2 W GamerCard
-exclusively, and none of those workflows ever produced a binary this board
-should run (most of them explicitly pinned `--no-default-features --features
-webgl` back to a GPU-featured build — a feature this fork has since removed
-outright, see below). `build-pizero2w.yml` is simply plain `cargo build
---release` with `RUSTFLAGS: -C target-cpu=cortex-a53` (the board's CPU is
-fixed and known), no feature flags at all (there being only one build left
-to produce), no `ubuntu:20.04` glibc-floor container (that floor existed for
+exclusively, and none of those workflows ever produced a binary tuned for
+this board's own CPU target. `build-pizero2w.yml` is simply plain `cargo
+build --release` with `RUSTFLAGS: -C target-cpu=cortex-a53` (the board's CPU
+is fixed and known) — no feature flags needed, since `default = ["webgl"]`
+in the repo root's `Cargo.toml` is already the build this board wants (GL
+atop Mesa's software rasterizer — see the "GL/WebGL backend, restored"
+section below), no `ubuntu:20.04` glibc-floor container (that floor existed for
 a decade of mismatched handheld firmwares, not this known, modern, single
 target OS — Debian 12 bookworm, glibc 2.36 — where the plain
 `ubuntu-22.04-arm` runner, glibc 2.35, is already an older floor than the
@@ -392,56 +400,76 @@ release also zips the second one with a `.sha256` sidecar, and `nightly.yml`
 — now trimmed to just `changed → pizero2w → publish`, with no other
 platform's artifacts to assemble — builds and publishes it every night.
 
-## GL/WebGL backend removed entirely
+## GL/WebGL backend, restored
 
-Deleting the other platforms' CI workflows (above) left the `webgl` Cargo
-feature and the GL chrome backend it gated (`src/platform/window/gl.rs`)
-with no CI job that ever built them in this repo — this board's own
-`software` default never touched either. Rather than leave that as dead
-weight nothing exercises, both were removed outright, along with everything
-that existed only to feed them:
+An earlier pass through this fork deleted the `webgl` Cargo feature and the
+GL chrome backend it gated (`src/platform/window/gl.rs`,
+`src/platform/render/sdl.rs`/`webgl.rs`/`webgl_off.rs`) entirely, on the
+reasoning that this board's VideoCore IV GPU path wasn't worth the RAM and
+that swgl (the `software` feature) covered rendering end to end instead.
+On-device testing then found two problems with swgl-only rendering serious
+enough to reverse that:
+
+- **WebGL is simply unavailable.** `SwglRenderingContext` has no EGL/surfman
+  connection at all — there is no surface to hand a WebGL canvas, so any page
+  with a WebGL-dependent hero/viewer element (confirmed on this product's own
+  marketing page, `grantsinclair.com/gamercard`) renders blank.
+- **swgl can crash the whole process on ordinary page content.** swgl's own
+  blend-mode dispatch (`hash_blend_key` in its vendored `gl.cc`) only
+  implements a curated table of GL blend func/equation combinations. A page
+  that drives WebRender into a combination outside that table — seen in
+  practice loading Wikipedia's main page, not a synthetic WebGL test —
+  hits an `assert(false)` and aborts the **entire process**, not just the
+  page. This is a known, recurring class of swgl bug upstream (Mozilla's own
+  bug tracker has several instances of exactly this crash signature, fixed
+  piecemeal as new blend combinations were discovered); it is not something
+  introduced by or fixable within this fork.
+
+The fix is **not** to use the VideoCore IV's own GPU driver — its GLES is
+2.x only, below WebRender/egui's GLES 3.0 floor, confirmed too weak well
+before swgl was ever adopted. It's Mesa's `llvmpipe` software rasterizer,
+forced on via `LIBGL_ALWAYS_SOFTWARE=1` (`launch.sh`): a full,
+spec-compliant (if CPU-bound) GL/EGL implementation that has neither problem
+above, unlike swgl's WebRender-specific subset. So, restored:
 
 - **`webgl` feature and the GL chrome backend**: `src/platform/window/gl.rs`
   (`GlBackend`, SDL2's own GL/GLES context), `src/platform/render/sdl.rs`
-  (`SdlRenderingContext`, the FBO it rendered into), and
+  (`SdlRenderingContext`, the FBO it renders into), and
   `src/platform/render/webgl.rs`/`webgl_off.rs` (the EGL composite path
-  WebGL needed to reach the screen) are all deleted. `src/platform/window/
-  mod.rs`'s `build_backend()` no longer picks between GL and software at
-  runtime — it only ever builds `SoftwareBackend` now, since that was
-  already the only thing this board's `config.toml` ever asked for.
-- **`[display] use_gles` / `software_render`**: both config fields removed
-  from `src/config/display.rs` (and the "Use OpenGL ES" Settings row) — with
-  no GL backend left to pick between, a config knob that could only ever
-  mean "use the one renderer that exists" is confusion, not a setting.
-  `config.toml` below no longer sets either.
-- **Android (`android/`)**: `android/lib/Cargo.toml` depended on
-  `retsurf = { ..., features = ["webgl"] }` directly — Mali/Adreno/PowerVR
-  phones have no software-rendering fallback build upstream ever shipped, so
-  removing `webgl` left that crate permanently unbuildable. Since Android
-  was already out of scope for this repo (the "other devices are discarded"
-  decision above covers it too), the whole `android/` directory and the
-  `[workspace]` entry for it are gone rather than left half-broken. The
-  scattered `#[cfg(target_os = "android")]` blocks still inside `src/`
-  (15 files) are left exactly as they were: harmless, already never compiled
-  by anything this repo builds, and out of scope for this pass — only the
-  one crate that structurally *required* `webgl` to exist is gone.
+  WebGL needs to reach the screen) are all back, and `default = ["webgl"]`
+  in the repo root's `Cargo.toml` now, not `["software"]`.
+  `src/platform/window/mod.rs`'s `build_backend()` picks GL first again,
+  falling back to `SoftwareBackend` only if GL itself cannot come up at all —
+  this board's own build keeps the `software` feature compiled in purely as
+  that last-resort fallback, not as the path it actually runs.
+- **`[display] use_gles` / `software_render`**: both config fields are back
+  in `src/config/display.rs` (and the "Use OpenGL ES" Settings row).
+  `config.toml` below sets them explicitly (`use_gles = true`,
+  `software_render = false`) so a debug run without `launch.sh`'s env
+  doesn't silently pick a different path.
 - **`tests/run_pages.py`**: the `webgl` and `webgl2-features` cases (and
-  their `tests/pages/webgl*.html`/`.js` fixtures) are deleted — they can
-  never produce a context to probe once `servo/webgl` isn't compiled in at
-  all, not just off by default. `.github/workflows/check.yml` dropped
-  `--no-default-features --features webgl` from its build/test/clippy steps
-  as a result: it now validates the exact `software` default
-  `build-pizero2w.yml` ships, rather than a GPU path this repo can no
-  longer produce.
+  their `tests/pages/webgl*.html`/`.js` fixtures) are back, and
+  `.github/workflows/check.yml` validates the restored default again.
 
-Left untouched on purpose: `tools/arm64/build.sh`'s `--features webgl` and
-`tools/armhf/build.sh`'s `--features software` invocations (both preserved,
-per the "other devices discarded" decision, purely as reference material for
-a future separate project) will no longer run against *this* repo's
-`Cargo.toml` — neither feature exists here anymore. That is an accepted
-consequence of preserving those two directories unedited, not an oversight;
-flagging it here since it is the one place their contents and this repo's
-current `Cargo.toml` now disagree.
+**Left as removed, on purpose, and unrelated to this reversal**: Android
+(`android/`) and every other non-pizero2w platform's CI workflow — those
+were a platform-scope decision (see the CI section below), not a
+rendering-backend one, and restoring `webgl` doesn't bring Android back into
+scope. `tools/arm64/build.sh`'s `--features webgl` and
+`tools/armhf/build.sh`'s `--features software` invocations, preserved purely
+as reference material for a future separate project, now happen to match
+this repo's `Cargo.toml` again — not that it matters, since neither script
+runs against this repo's own CI.
+
+**Still open, and NOT fixed by this reversal**: Wikipedia's main page shows
+solid black rectangles where several icons should be (the logo, a few small
+icons). That's a different bug — this fork's Servo engine does not support
+the CSS `mask-image` property at all (`Unsupported property declaration:
+'mask-image', UnknownProperty` in the log), and Wikipedia's icon system
+draws icons as a `background-color` cut out by a `mask-image`; with the mask
+ignored, the full (often black) background square shows instead. This is a
+style-engine gap, not a compositing-backend one, so it reproduces on GL just
+as it did on swgl — tracked separately, not addressed here.
 
 ## Updates: the console's own store, not retsurf's in-app updater
 
@@ -485,11 +513,11 @@ cp packaging/pizero2w/launch.sh /opt/retsurf/ && chmod +x /opt/retsurf/launch.sh
 ```
 
 The binary itself needs no feature flags at all: a plain `cargo build
---release` already produces the CPU-only binary this board runs — this
-fork's only rendering path now, not merely its default (see the "GL/WebGL
-backend removed entirely" section above and the repo root's `Cargo.toml`;
-`.github/workflows/build-pizero2w.yml` is the CI job that builds exactly
-this).
+--release` already produces the binary this board runs — `default =
+["webgl"]` (GL atop Mesa's software rasterizer, see the "GL/WebGL backend,
+restored" section above) is already this fork's default, not something a
+build invocation has to ask for — and `.github/workflows/build-pizero2w.yml`
+is the CI job that builds exactly this.
 
 Unlike the PortMaster per-core matrix (`tools/arm64/build.sh`, kept only as
 reference material per the "other devices discarded" decision above), which
@@ -507,16 +535,12 @@ apply to every `aarch64-unknown-linux-gnu` build — this belongs in this
 board's own build invocation (or a `RUSTFLAGS` export in a local build
 script), not shared.
 
-## Minor: `[experimental] webgl2` stays on even though WebGL can't run
+## `[experimental] webgl2` actually does something again
 
-`ExperimentalConfig::default()` (the "Balanced" preset, `src/config/experimental.rs`)
-ships `webgl2 = true`. `servo/webgl` doesn't exist as a buildable feature in
-this fork's `Cargo.toml` at all anymore (see the "GL/WebGL backend removed
-entirely" section above), so `canvas.getContext('webgl2')` returns `null`
-regardless of this preference — it's a no-op, not a bug: the flag only
-governs whether the (never compiled) WebGL backend is *permitted*, not
-whether it exists. **Left as-is here, on purpose**: it's a Servo runtime
-preference, unrelated to the Cargo feature, and this preset already shipped
-in this exact "on but inert" state before the feature was removed — flipping
-it to `false` would only be cosmetic in the Settings screen, not a behavior
-change either way.
+`ExperimentalConfig::default()` (the "Balanced" preset,
+`src/config/experimental.rs`) ships `webgl2 = true`. For a while this fork's
+`Cargo.toml` didn't compile `servo/webgl` in at all, making the preference a
+no-op (`canvas.getContext('webgl2')` always `null` regardless of its value);
+now that `webgl` is back as this board's default feature (see the "GL/WebGL
+backend, restored" section above), this preference is live again and governs
+real behavior — left at its upstream default, no change needed here.

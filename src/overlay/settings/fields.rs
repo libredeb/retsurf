@@ -426,6 +426,7 @@ pub(super) static FIELDS: &[Field] = &[
     f(S::System,   "Performance", "Frame cap (fps)",        int!(performance.max_fps as u32, bounds::MAX_FPS, 5, Some("Uncapped")), false),
     f(S::System,   "Display",     "Window width",           int!(display.width as u32, bounds::WIDTH, 16), true),
     f(S::System,   "Display",     "Window height",          int!(display.height as u32, bounds::HEIGHT, 16), true),
+    f(S::System,   "Display",     "Use OpenGL ES",          flag!(display.use_gles), true),
     f(S::System,   "Downloads",   "Save folder",            text!(downloads.dir), true),
     f(S::System,   "Data",        "Clear browsing data",    Kind::Action { task: Task::ClearData }, false),
     f(S::System,   "Updates",     "Update channel",         choice!(update.channel: Channel), false),
