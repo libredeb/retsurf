@@ -1,0 +1,127 @@
+name: Pi Zero 2 W
+
+# The GamerCard handheld: Raspberry Pi Zero 2 W (quad Cortex-A53, 512 MB),
+# Debian 12 (bookworm) ARM64, no GPU worth spending RAM on — this fork's
+# `default = ["software"]` (Cargo.toml) is exactly what this target wants, so
+# unlike every *other* Linux build in this repo, nothing here fights that
+# default back to `webgl`. See packaging/pizero2w/README.md for the device
+# profile this binary ships next to.
+on:
+  workflow_dispatch:
+  workflow_call:
+  release:
+    types: [published]
+
+# Named by hand: `github.workflow` is the *caller's* name in a called workflow,
+# so six callees would share one group and cancel each other out of it.
+concurrency:
+  group: build-pizero2w-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # Nightly builds its own release; publishing it must not start a second build.
+    if: github.event_name != 'release' || github.event.release.tag_name != 'nightly'
+    # Native arm64 runner, no cross-compile/qemu — same as the PortMaster and
+    # universal aarch64 jobs. Unlike those, no `ubuntu:20.04` glibc-floor
+    # container: this target is a fixed, known, modern OS (Debian 12 bookworm,
+    # glibc 2.36), not a decade of mismatched handheld firmwares, so the
+    # runner's own 22.04 (glibc 2.35) is already an older floor than the
+    # device, and mozjs_sys's prebuilt SpiderMonkey — built on Ubuntu 22.04 —
+    # needs no `MOZJS_FROM_SOURCE` rebuild to match it.
+    runs-on: ubuntu-22.04-arm
+    env:
+      # clang-sys would take the newest libclang on this image, and mozangle's
+      # shader bindgen dies on clang 15: it dropped __builtin_ia32_* sat-math.
+      LIBCLANG_PATH: /usr/lib/llvm-14/lib
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify tag matches Cargo.toml version
+        if: github.event_name == 'release'
+        uses: ./.github/actions/verify-version
+
+      - name: Diagnostics
+        run: |
+          set -eux
+          uname -m
+          ldd --version | head -1
+          nproc
+          free -h || true
+          df -h /
+
+      - uses: ./.github/actions/linux-build-env
+
+      # The board is a fixed, known quad Cortex-A53 — unlike the PortMaster
+      # matrix, which must stay portable across A35/A53/A55, this build can
+      # safely tell rustc that (see packaging/pizero2w/README.md's own build
+      # section for the same flag used on-device). No `--features` override:
+      # the fork's own default (`["software"]`) is already the CPU-only,
+      # no-EGL build this board wants.
+      - name: Build
+        env:
+          RUSTFLAGS: -C target-cpu=cortex-a53
+        run: |
+          set -eux
+          cargo build --release
+          df -h /
+
+      - name: Stage binary
+        run: |
+          set -eux
+          mkdir -p dist
+          cp target/release/retsurf dist/retsurf
+          strip dist/retsurf || true
+          ls -la dist/
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: retsurf-pizero2w-bin
+          path: dist/retsurf
+          retention-days: 14
+
+      # The binary plus everything packaging/pizero2w/README.md's Install
+      # section copies beside it — extract straight into /opt/retsurf/.
+      - name: Package for the device
+        run: |
+          set -eux
+          pkg=dist/retsurf-pizero2w
+          mkdir -p "$pkg"
+          cp dist/retsurf "$pkg/"
+          cp packaging/pizero2w/config.toml "$pkg/"
+          cp packaging/pizero2w/bindings.toml "$pkg/"
+          cp packaging/pizero2w/fonts.conf.in "$pkg/"
+          cp packaging/pizero2w/launch.sh "$pkg/" && chmod +x "$pkg/launch.sh"
+          ls -la "$pkg"
+
+      - name: Upload device package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: retsurf-pizero2w
+          path: dist/retsurf-pizero2w
+          retention-days: 14
+
+      - name: Zip for release
+        if: github.event_name == 'release'
+        run: |
+          set -eux
+          cd dist/retsurf-pizero2w && zip -r ../../retsurf-pizero2w.zip .
+          cd ../..
+          # Not consulted by the in-app updater yet (`Kind::Single` matches any
+          # linux/aarch64 install onto `retsurf-linux-aarch64.zip` — the
+          # GPU-featured universal build, wrong for this board; see the
+          # README's update-safety note). Shipped anyway for manual
+          # verification, same as every other platform's sidecar.
+          sha256sum retsurf-pizero2w.zip > retsurf-pizero2w.zip.sha256
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            retsurf-pizero2w.zip
+            retsurf-pizero2w.zip.sha256

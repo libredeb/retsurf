@@ -21,6 +21,15 @@ This directory is being built up in the same stages as the refactor itself:
       corrected itself once an actual board's `lsusb` / `/proc/bus/input/
       devices` output and its labwc/Wayland/PipeWire stack were in hand,
       rather than assumed from the spec sheet alone.
+- [x] **CI**: `.github/workflows/build-pizero2w.yml` builds and packages a
+      ready-to-copy `retsurf-pizero2w.zip` on every nightly/release, the one
+      workflow in this repo that doesn't fight the fork's own `software`
+      default back to `webgl`. `config.toml`'s `[update] auto_check = false`
+      is the safety note that goes with it.
+- [ ] **Follow-up, not yet done**: `src/update/mod.rs`'s `resolve_kind()`
+      needs a pizero2w-specific case so a *manual* update check doesn't still
+      offer the wrong (`webgl`-featured) asset — see the update-safety
+      section below.
 
 ## Why `embedded`, not a new tier
 
@@ -241,12 +250,71 @@ Two more things this file assumed are now verified against the real board:
 | `bindings.toml` | Copied to the data dir on first run; rebinds `zoom_in`/`zoom_out`/`zoom_reset` off the l2/r2 triggers this board doesn't have (see the Input section above). Every other gesture comes back from retsurf's own compiled-in defaults. |
 | `fonts.conf.in` | Fontconfig template; `launch.sh` only installs it if the image's own fontconfig can't resolve a sans-serif font at all. `@FCCACHE@` is substituted with a writable cache path. |
 | `launch.sh` | Example launcher: env vars, first-run config/bindings install, conditional fontconfig template, opt-in zram/swap tuning (`swap-tuning.on`). Adjust `gamedir`/controller mapping/autostart to your image. |
+| `../../.github/workflows/build-pizero2w.yml` | Not in this directory, but builds and packages everything above into `retsurf-pizero2w.zip` on every nightly and tagged release — see the CI section below. |
+
+## CI: `build-pizero2w.yml`, and where it differs from every other job
+
+None of this repo's existing workflows ever produced a binary this board
+should run: `build-linux-arm.yml`'s per-core matrix and `build-universal` job,
+and `build-linux.yml`'s desktop build, all explicitly pass
+`--no-default-features --features webgl` to pin back to a GPU-featured build
+— correct for PortMaster handhelds and desktop Linux, the opposite of what
+this fork's own default flip (`Cargo.toml`, `default = ["software"]`) was
+for. `build-pizero2w.yml` is the one that doesn't fight that default: plain
+`cargo build --release` with `RUSTFLAGS: -C target-cpu=cortex-a53` (the
+board's CPU is fixed and known, unlike PortMaster's A35/A53/A55 spread), no
+feature flags at all. It also skips the `ubuntu:20.04` glibc-floor container
+every ARM job here otherwise needs: that floor exists for a decade of
+mismatched handheld firmwares, not a known, modern, single target OS (Debian
+12 bookworm, glibc 2.36) — the plain `ubuntu-22.04-arm` runner (glibc 2.35) is
+already an older floor than the device, and mozjs_sys's prebuilt SpiderMonkey
+(itself built on Ubuntu 22.04) needs no `MOZJS_FROM_SOURCE` rebuild to match
+it, unlike the floored jobs.
+
+It uploads two artifacts: `retsurf-pizero2w-bin` (the bare binary, CI-only,
+14-day retention) and `retsurf-pizero2w` (the binary plus every file this
+directory ships — `config.toml`, `bindings.toml`, `fonts.conf.in`,
+`launch.sh` — laid out exactly as the Install section below copies them,
+ready to unzip straight into `/opt/retsurf/`). A tagged release also zips the
+second one with a `.sha256` sidecar, and `nightly.yml` now builds and
+publishes it alongside every other platform.
+
+**Before this release asset exists publicly, read the update-safety note
+right below** — it's the reason `config.toml` ships `[update] auto_check =
+false`.
+
+## Update safety: `[update] auto_check = false` is load-bearing here
+
+`src/update/mod.rs`'s install-kind detection (`resolve_kind()`) has no case
+for this board: it only special-cases PortMaster (a sibling `Retsurf.sh`
+file) before falling through to "any writable-directory `linux`/`aarch64`
+install" as `Kind::Single`, pointed at the **generic** release asset,
+`retsurf-linux-aarch64.zip` — the `webgl`-featured, untuned universal build
+from `build-linux-arm.yml`, not this board's own `retsurf-pizero2w.zip`. With
+`auto_check` on (the engine's own default), this board would see "update
+available" and, if installed, get swapped onto a binary that doesn't even
+compile `SoftwareBackend` in — `config.toml`'s `software_render = true` would
+have nothing to select at that point. `config.toml` above turns the
+background check off so this never ambushes anyone from a notification; it
+doesn't stop a manual check from Settings > About, which is still a trap
+until `resolve_kind()` gains a pizero2w-specific case (a sibling-file check
+in the same spirit as `portmaster_paths()`, pointed at
+`retsurf-pizero2w.zip`) — filed as a follow-up, not yet done.
 
 ## Install
 
+**Easiest**: download `retsurf-pizero2w.zip` from a [release](../../releases)
+(or the `retsurf-pizero2w` artifact off a `build-pizero2w.yml` Actions run)
+and unzip it straight into `/opt/retsurf/` — it already contains the binary
+plus all four files this directory ships, laid out ready to run
+(`chmod +x /opt/retsurf/launch.sh` once, since zip doesn't always preserve
+the executable bit).
+
+**Building it yourself** instead — on-device, or any arm64 Linux box:
+
 ```sh
 mkdir -p /opt/retsurf
-cp /path/to/retsurf-linux-aarch64/retsurf /opt/retsurf/
+cp /path/to/retsurf /opt/retsurf/
 cp packaging/pizero2w/config.toml /opt/retsurf/
 cp packaging/pizero2w/bindings.toml /opt/retsurf/
 cp packaging/pizero2w/fonts.conf.in /opt/retsurf/
@@ -254,18 +322,18 @@ cp packaging/pizero2w/launch.sh /opt/retsurf/ && chmod +x /opt/retsurf/launch.sh
 ```
 
 The binary itself needs building with this fork's new defaults (stage 3):
-a plain `cargo build --release` (or the arm64 cross-build in
-`tools/arm64/build.sh`, once it's taught this board's target triple/CPU
-tuning) now produces a CPU-only binary already matching
+a plain `cargo build --release` already produces a CPU-only binary matching
 `[display] software_render = true` above — no extra `--features` flag needed,
 unlike every *other* platform this repo still ships GPU builds for (see the
-repo root's `Cargo.toml` and the `README.md`/`CHANGELOG.md` for that change).
+repo root's `Cargo.toml` and the `README.md`/`CHANGELOG.md` for that change;
+`.github/workflows/build-pizero2w.yml` is the CI job that builds exactly
+this, see the CI section above for why it looks nothing like its siblings).
 
 Unlike the PortMaster per-core matrix (`tools/arm64/build.sh`), which must
 produce one binary that runs on A35, A53 *and* A55 cores, this board's CPU is
 fixed and known: a Cortex-A53 quad-core. Building directly on the device
-(Debian 12 arm64) can safely tell rustc that, which the generic/portable
-build above does not:
+(Debian 12 arm64) can safely tell rustc that, which a generic/portable
+build does not:
 
 ```sh
 RUSTFLAGS="-C target-cpu=cortex-a53" cargo build --release

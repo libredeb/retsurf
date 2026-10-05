@@ -69,6 +69,11 @@ jobs:
     if: needs.changed.outputs.build == 'true'
     uses: ./.github/workflows/build-linux-armhf.yml
 
+  pizero2w:
+    needs: changed
+    if: needs.changed.outputs.build == 'true'
+    uses: ./.github/workflows/build-pizero2w.yml
+
   macos:
     needs: changed
     if: needs.changed.outputs.build == 'true'
@@ -87,7 +92,8 @@ jobs:
     secrets: inherit
 
   publish:
-    needs: [changed, linux, linux-arm, linux-armhf, macos, windows, android]
+    needs:
+      [changed, linux, linux-arm, linux-armhf, pizero2w, macos, windows, android]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
@@ -108,13 +114,18 @@ jobs:
           cp art/retsurf-macos-aarch64/*.dmg out/retsurf-macos-aarch64.dmg
           cp art/retsurf-android-arm64/*.apk out/retsurf-android-arm64.apk
           for a in retsurf-linux-x86_64 retsurf-linux-aarch64 retsurf-portmaster \
-                   retsurf-windows-x86_64; do
+                   retsurf-pizero2w retsurf-windows-x86_64; do
             (cd "art/$a" && zip -r "../../out/$a.zip" .)
           done
           # Sidecars for the three the updater installs in place; it verifies the
-          # download against them (src/update).
+          # download against them (src/update). retsurf-pizero2w isn't one of
+          # them yet (src/update's Kind::Single matches any linux/aarch64 exe
+          # onto retsurf-linux-aarch64.zip, not this board's own asset — see
+          # packaging/pizero2w/README.md's update-safety note) but ships a
+          # sidecar anyway, for manual verification, same as every other asset.
           cd out
-          for a in retsurf-linux-x86_64 retsurf-linux-aarch64 retsurf-portmaster; do
+          for a in retsurf-linux-x86_64 retsurf-linux-aarch64 retsurf-portmaster \
+                   retsurf-pizero2w; do
             sha256sum "$a.zip" > "$a.zip.sha256"
           done
           ls -la

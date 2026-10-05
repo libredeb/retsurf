@@ -41,6 +41,18 @@ max_tabs = 1
 # the right feel on the actual nav disc.
 cursor_curve = 2.0
 
+[update]
+# src/update's install-kind detection has no case for this board yet: any
+# writable-directory linux/aarch64 install reads as `Kind::Single` and points
+# at `retsurf-linux-aarch64.zip` — the generic, GPU-featured (`webgl`)
+# universal build CI makes for desktop-style aarch64, not this board's own
+# CPU-only `retsurf-pizero2w.zip`. An in-place "update" would swap this
+# board's binary for one that doesn't match its Cargo features at all. Off
+# until src/update gains a pizero2w-specific Kind (a sibling-file check like
+# PortMaster's own `portmaster_paths()`) pointed at the right asset — see
+# packaging/pizero2w/README.md.
+auto_check = false
+
 [performance]
 # `auto` already resolves 512 MB into this tier (src/browser/memory.rs,
 # 257-768 MB -> `embedded`), but pinned explicitly so an SoC reporting a
