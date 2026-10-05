@@ -38,9 +38,6 @@ impl CompositeTiming {
     }
 }
 
-/// Stands in where the driver reports no refresh rate: every panel here is 60 Hz.
-const ASSUMED_PANEL_INTERVAL: Duration = Duration::from_micros(16_667);
-
 /// What every renderer bundle offers the window — dispatch lives here, so the
 /// rest of the app never spells a backend or a `cfg` again.
 trait WindowBackend {
