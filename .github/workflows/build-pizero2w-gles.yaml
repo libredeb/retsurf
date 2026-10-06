@@ -42,7 +42,8 @@ jobs:
           RUSTFLAGS: -C target-cpu=cortex-a53
         run: |
           set -eux
-          cargo build --release --no-default-features --features "gles"
+          # Pass the 'gles' feature directly to the underlying engine component
+          cargo build --release --no-default-features --features "servo/gles"
           df -h /
 
       - name: Stage binary
