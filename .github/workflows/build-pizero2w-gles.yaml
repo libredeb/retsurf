@@ -1,0 +1,108 @@
+name: Pi Zero 2 W (Custom GLES 2.0)
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  release:
+    types: [published]
+
+concurrency:
+  group: build-pizero2w-gles-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.event_name != 'release' || github.event.release.tag_name != 'nightly'
+    runs-on: ubuntu-22.04-arm
+    env:
+      LIBCLANG_PATH: /usr/lib/llvm-14/lib
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify tag matches Cargo.toml version
+        if: github.event_name == 'release'
+        uses: ./.github/actions/verify-version
+
+      - name: Diagnostics
+        run: |
+          set -eux
+          uname -m
+          ldd --version | head -1
+          nproc
+          free -h || true
+          df -h /
+
+      - uses: ./.github/actions/linux-build-env
+
+      # Modificamos el paso de compilación para desactivar los features por defecto (que traen webgl/software)
+      # y forzar explícitamente el backend de gles de webrender/servo si tu fork lo soporta por flag.
+      - name: Build
+        env:
+          RUSTFLAGS: -C target-cpu=cortex-a53
+        run: |
+          set -eux
+          # Si modificaste el Cargo.toml para añadir un feature "gles", lo llamamos aquí.
+          # Si no lo añadiste a nivel global, usamos --no-default-features y activamos gles.
+          cargo build --release --no-default-features --features "gles"
+          df -h /
+
+      # [El resto de tus pasos de empaquetado se mantienen exactamente igual...]
+      - name: Stage binary
+        run: |
+          set -eux
+          mkdir -p dist
+          cp target/release/retsurf dist/retsurf
+          strip dist/retsurf || true
+          ls -la dist/
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: retsurf-pizero2w-gles-bin
+          path: dist/retsurf
+          retention-days: 14
+
+      - name: Package for the device
+        run: |
+          set -eux
+          pkg=dist/retsurf-pizero2w
+          mkdir -p "$pkg"
+          cp dist/retsurf "$pkg/"
+          cp packaging/pizero2w/config.toml "$pkg/"
+          cp packaging/pizero2w/bindings.toml "$pkg/"
+          cp packaging/pizero2w/fonts.conf.in "$pkg/"
+          cp packaging/pizero2w/retsurf.desktop "$pkg/"
+          cp packaging/pizero2w/launch.sh "$pkg/" && chmod +x "$pkg/launch.sh"
+          ls -la "$pkg"
+
+      - name: Upload device package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: retsurf-pizero2w-gles
+          path: dist/retsurf-pizero2w
+          retention-days: 14
+
+      # En el script de lanzamiento que va al zip, recuerda editar 
+      # "packaging/pizero2w/launch.sh" en tu repositorio para:
+      # 1. Quitar: LIBGL_ALWAYS_SOFTWARE=1
+      # 2. Añadir: export SURFMAN_FORCE_GLES=1
+      # Esto asegura que al ejecutar el zip en la Pi use el hardware.
+       Tarjeta de video nativa.
+      - name: Zip for release
+        if: github.event_name == 'release'
+        run: |
+          set -eux
+          cd dist/retsurf-pizero2w && zip -r ../../retsurf-pizero2w.zip .
+          cd ../..
+          sha256sum retsurf-pizero2w.zip > retsurf-pizero2w.zip.sha256
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            retsurf-pizero2w.zip
+            retsurf-pizero2w.zip.sha256
