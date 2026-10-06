@@ -148,6 +148,22 @@ impl servo::WebViewDelegate for AppBrowserInner {
         }
     }
 
+    /// Pipes a page's own `console.log/warn/error/...` calls into our log at the
+    /// matching level (`embedder_traits::ConsoleLogLevel` maps 1:1 onto
+    /// `log::Level`), tagged with their own target so they're easy to filter
+    /// from ours. Without this override Servo just drops them — there was no
+    /// way to see why a page's own script decided (or silently failed) to do
+    /// something, short of adding ad-hoc logging to the engine itself.
+    /// <https://developer.mozilla.org/en-US/docs/Web/API/Console_API>
+    fn show_console_message(
+        &self,
+        _webview: WebView,
+        level: servo::ConsoleLogLevel,
+        message: String,
+    ) {
+        log::log!(target: "page_console", log::Level::from(level), "{message}");
+    }
+
     fn hide_embedder_control(&self, _webview: WebView, id: servo::EmbedderControlId) {
         if self.ime_control.get() == Some(id) {
             self.ime_control.set(None);
