@@ -56,3 +56,9 @@ retsurf sets `SURFMAN_FORCE_GLES=1` itself when GLES is on. `LIBGL_ALWAYS_SOFTWA
 Mesa variable, not retsurf's own — it keeps the GL path above but forces Mesa's CPU
 rasterizer underneath it (see [Rendering](RENDERING.md)), unlike `RETSURF_SOFTWARE=1`,
 which switches to the separate swgl `software` feature entirely.
+
+A page's own `console.log`/`warn`/`error`/… calls are logged under the `page_console`
+target, at the matching level (`error`/`warn`/`info`/`debug`/`trace`) — useful for seeing
+why a page's own script silently did (or didn't do) something, independent of retsurf's
+own log lines. `RETSURF_LOG_LEVEL` still gates it like any other target: `debug` or
+`trace` for a page that only uses `console.debug`/`console.log` at low severity.

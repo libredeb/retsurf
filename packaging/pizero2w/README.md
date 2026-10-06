@@ -463,13 +463,47 @@ runs against this repo's own CI.
 
 **Still open, and NOT fixed by this reversal**: Wikipedia's main page shows
 solid black rectangles where several icons should be (the logo, a few small
-icons). That's a different bug — this fork's Servo engine does not support
-the CSS `mask-image` property at all (`Unsupported property declaration:
-'mask-image', UnknownProperty` in the log), and Wikipedia's icon system
-draws icons as a `background-color` cut out by a `mask-image`; with the mask
-ignored, the full (often black) background square shows instead. This is a
-style-engine gap, not a compositing-backend one, so it reproduces on GL just
-as it did on swgl — tracked separately, not addressed here.
+icons). This is a style-engine gap, not a compositing-backend one — it
+reproduces on GL just as it did on swgl — and it turned out to run deeper
+than it first looked:
+
+- Stylo (the CSS engine, `servo/stylo`, shared with Firefox) parses the
+  entire `mask-*` family fine — it's not a parser gap in the usual sense.
+- But every `mask-*` longhand (`mask-image` included) carries
+  `servo_pref = "layout.unimplemented"` in Stylo's `longhands.toml`, and
+  that pref (`layout_unimplemented` in this fork's
+  `components/config/prefs.rs`) defaults to **off**. With it off, Stylo
+  rejects the declaration outright at parse time — logged as
+  `Unsupported property declaration: 'mask-image', UnknownProperty` — so the
+  computed value is always `Image::None`, regardless of what the page wrote.
+  Wikipedia's icon system draws icons as a `background-color` cut out by a
+  `mask-image`; with the mask never even parsed, the full (often black)
+  background square shows instead.
+- Even if that pref were flipped on, Servo's own layout/paint code (not
+  Stylo) still has **zero** handling for `mask-image` anywhere —
+  `components/layout/display_list/{background,clip,stacking_context}.rs`
+  have no masking logic at all, only `clip-path`'s purely geometric
+  rect/circle/ellipse clipping (`StackingContextTreeClipStore::add_for_clip_path`
+  in `clip.rs`). Painting a real image-based mask would mean adding that
+  concept from scratch — a multi-day engine feature, not a small patch —
+  confirmed first-hand against this fork's source, and consistent with
+  `servo/servo`'s own PR #45629, which states outright: *"We still do not
+  process the value of ... `mask-image` ... as we do not support those
+  values yet."*
+- `layout_unimplemented` is **not** mask-specific: it's a single pref gating
+  ~50 unrelated properties at once (`object-fit`, `text-overflow`,
+  `scroll-behavior`, `backdrop-filter`, `contain`, `appearance`,
+  `scrollbar-width`, `view-transition-name`/`-class`, and more). Flipping it
+  on as a shortcut to unblock `mask-image` parsing was considered and
+  rejected: it would silently change parsing/computation for all ~50 at
+  once, mostly still unpainted downstream anyway, for no real gain and a
+  real regression-surface increase.
+
+Net: this is a genuine, acknowledged, two-layer gap in upstream Servo itself
+(parse-time pref gate, *and* no paint-time implementation even without the
+gate), not something introduced by this fork or fixable with a pragmatic
+local patch. Left as a known limitation; revisit only as a dedicated,
+properly-scoped Servo contribution, not a retsurf-side workaround.
 
 ## Updates: the console's own store, not retsurf's in-app updater
 
