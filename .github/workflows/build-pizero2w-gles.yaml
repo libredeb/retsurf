@@ -37,19 +37,14 @@ jobs:
 
       - uses: ./.github/actions/linux-build-env
 
-      # Modificamos el paso de compilación para desactivar los features por defecto (que traen webgl/software)
-      # y forzar explícitamente el backend de gles de webrender/servo si tu fork lo soporta por flag.
       - name: Build
         env:
           RUSTFLAGS: -C target-cpu=cortex-a53
         run: |
           set -eux
-          # Si modificaste el Cargo.toml para añadir un feature "gles", lo llamamos aquí.
-          # Si no lo añadiste a nivel global, usamos --no-default-features y activamos gles.
           cargo build --release --no-default-features --features "gles"
           df -h /
 
-      # [El resto de tus pasos de empaquetado se mantienen exactamente igual...]
       - name: Stage binary
         run: |
           set -eux
@@ -85,12 +80,6 @@ jobs:
           path: dist/retsurf-pizero2w
           retention-days: 14
 
-      # En el script de lanzamiento que va al zip, recuerda editar 
-      # "packaging/pizero2w/launch.sh" en tu repositorio para:
-      # 1. Quitar: LIBGL_ALWAYS_SOFTWARE=1
-      # 2. Añadir: export SURFMAN_FORCE_GLES=1
-      # Esto asegura que al ejecutar el zip en la Pi use el hardware.
-       Tarjeta de video nativa.
       - name: Zip for release
         if: github.event_name == 'release'
         run: |
